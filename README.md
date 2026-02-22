@@ -31,13 +31,40 @@ Optional extra segment sets webhook topic sent upstream:
 Sources:
 
 - `github` (auth via `X-Hub-Signature-256` with `GITHUB_WEBHOOK_SECRET`)
-- `krisp` (auth via `Authorization` header matching `KRISP_AUTHORIZATION`)
+- `krisp` (auth via `Authorization: Bearer <KRISP_WEBHOOK_SECRET>`)
 
 Hosts (via Tailscale serve HTTPS):
 
 - `tashi` -> `https://tashi.silverside-mermaid.ts.net`
 - `pema` -> `https://pema.silverside-mermaid.ts.net`
 - `nima` -> `https://nima.silverside-mermaid.ts.net`
+
+## Krisp Forwarding
+
+Incoming check:
+
+- `Authorization: Bearer <KRISP_WEBHOOK_SECRET>`
+
+Forwarded request (to selected host):
+
+- `POST https://<host>.silverside-mermaid.ts.net/hooks/agent`
+- `Authorization: Bearer <OPENCLAW_HOOKS_TOKEN_TASHI>`
+- `Content-Type: application/json`
+
+Forwarded payload:
+
+```json
+{
+  "name": "notetaker:krisp",
+  "message": "<raw body string>",
+  "deliver": true,
+  "wakeMode": "now"
+}
+```
+
+Expected upstream response:
+
+- `202 { "status": "ok" }`
 
 ## Local Run
 
@@ -83,10 +110,8 @@ See examples:
 - `HOST` (default `0.0.0.0`)
 - `PORT` (default `8787`)
 - `GITHUB_WEBHOOK_SECRET`
-- `KRISP_AUTHORIZATION`
-- `WEBHOOK_SECRET_TASHI_OUT` (optional)
-- `WEBHOOK_SECRET_PEMA_OUT` (optional)
-- `WEBHOOK_SECRET_NIMA_OUT` (optional)
+- `KRISP_WEBHOOK_SECRET`
+- `OPENCLAW_HOOKS_TOKEN_TASHI` (used only for krisp -> tashi)
 
 See examples:
 

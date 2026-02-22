@@ -11,17 +11,14 @@ const listenPort = Number(process.env.PORT ?? 8787);
 const hosts = {
   tashi: {
     targetBaseUrl: 'https://tashi.silverside-mermaid.ts.net',
-    forwardSecretEnv: 'WEBHOOK_SECRET_TASHI_OUT',
     timeoutMs: 15000,
   },
   pema: {
     targetBaseUrl: 'https://pema.silverside-mermaid.ts.net',
-    forwardSecretEnv: 'WEBHOOK_SECRET_PEMA_OUT',
     timeoutMs: 15000,
   },
   nima: {
     targetBaseUrl: 'https://nima.silverside-mermaid.ts.net',
-    forwardSecretEnv: 'WEBHOOK_SECRET_NIMA_OUT',
     timeoutMs: 15000,
   },
 };
@@ -32,8 +29,8 @@ const sources = {
     secretEnv: 'GITHUB_WEBHOOK_SECRET',
   },
   krisp: {
-    auth: 'authorization_header',
-    authorizationEnv: 'KRISP_AUTHORIZATION',
+    auth: 'bearer_secret',
+    secretEnv: 'KRISP_WEBHOOK_SECRET',
   },
 };
 
@@ -51,7 +48,12 @@ function buildForwardUrl(baseUrl, source, queryString) {
   return queryString ? `${root}${path}?${queryString}` : `${root}${path}`;
 }
 
-function buildForwardHeaders(requestHeaders, remoteAddress, hostHeader, forwardSecret) {
+function buildKrispHookUrl(baseUrl) {
+  const root = String(baseUrl ?? '').replace(/\/$/, '');
+  return `${root}/hooks/agent`;
+}
+
+function buildForwardHeaders(requestHeaders, remoteAddress, hostHeader) {
   const headers = new Headers();
 
   for (const [key, value] of requestHeaders.entries()) {
@@ -69,10 +71,6 @@ function buildForwardHeaders(requestHeaders, remoteAddress, hostHeader, forwardS
   }
   if (hostHeader) headers.set('x-forwarded-host', hostHeader);
   headers.set('x-namche-proxy', 'namche-api-proxy');
-
-  if (forwardSecret) {
-    headers.set('x-webhook-secret', forwardSecret);
-  }
 
   return headers;
 }
@@ -161,7 +159,11 @@ async function handleWebhookForward(c, resolved) {
     return c.json({ ok: false, error: `Unknown host '${hostId}'` }, 404);
   }
 
-  const body = await c.req.arrayBuffer();
+  let body;
+
+  if (source.auth === 'github_signature' || sourceId !== 'krisp') {
+    body = await c.req.arrayBuffer();
+  }
 
   if (source.auth === 'github_signature') {
     const secret = process.env[source.secretEnv];
@@ -176,36 +178,66 @@ async function handleWebhookForward(c, resolved) {
     }
   }
 
-  if (source.auth === 'authorization_header') {
-    const expectedAuth = process.env[source.authorizationEnv];
-    if (!expectedAuth) {
-      return c.json({ ok: false, error: `Missing env '${source.authorizationEnv}'` }, 500);
+  if (source.auth === 'bearer_secret') {
+    const secret = process.env[source.secretEnv];
+    if (!secret) {
+      return c.json({ ok: false, error: `Missing env '${source.secretEnv}'` }, 500);
     }
 
+    const expectedAuth = `Bearer ${secret}`;
     const providedAuth = c.req.header('authorization');
     if (!providedAuth || providedAuth !== expectedAuth) {
       return c.json({ ok: false, error: 'unauthorized' }, 401);
     }
   }
 
-  const forwardSecretEnv = host.forwardSecretEnv;
-  const forwardSecret = forwardSecretEnv ? process.env[forwardSecretEnv] : undefined;
-
-  const queryString = new URL(c.req.url).searchParams.toString();
-  const url = buildForwardUrl(host.targetBaseUrl, topic, queryString);
-  const headers = buildForwardHeaders(c.req.raw.headers, c.env?.incoming?.remote?.address, c.req.header('host'), forwardSecret);
-
   const timeoutMs = Number(host.timeoutMs ?? 15000);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const upstream = await fetch(url, {
-      method: 'POST',
-      headers,
-      body,
-      signal: controller.signal,
-    });
+    let upstream;
+
+    if (sourceId === 'krisp') {
+      if (hostId !== 'tashi') {
+        return c.json({ ok: false, error: "krisp_forwarding_only_supported_for_host 'tashi'" }, 400);
+      }
+
+      const openclawHooksToken = process.env.OPENCLAW_HOOKS_TOKEN_TASHI;
+      if (!openclawHooksToken) {
+        return c.json({ ok: false, error: "Missing env 'OPENCLAW_HOOKS_TOKEN_TASHI'" }, 500);
+      }
+
+      const url = buildKrispHookUrl(host.targetBaseUrl);
+      const payload = JSON.stringify({
+        name: 'notetaker:krisp',
+        message: Buffer.from(body).toString('utf8'),
+        deliver: true,
+        wakeMode: 'now',
+      });
+
+      upstream = await fetch(url, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${openclawHooksToken}`,
+          'content-type': 'application/json',
+          'x-namche-proxy': 'namche-api-proxy',
+        },
+        body: payload,
+        signal: controller.signal,
+      });
+    } else {
+      const queryString = new URL(c.req.url).searchParams.toString();
+      const url = buildForwardUrl(host.targetBaseUrl, topic, queryString);
+      const headers = buildForwardHeaders(c.req.raw.headers, c.env?.incoming?.remote?.address, c.req.header('host'));
+
+      upstream = await fetch(url, {
+        method: 'POST',
+        headers,
+        body,
+        signal: controller.signal,
+      });
+    }
 
     const responseBody = await upstream.arrayBuffer();
     const responseHeaders = new Headers();
@@ -215,7 +247,7 @@ async function handleWebhookForward(c, resolved) {
       responseHeaders.set('content-type', contentType);
     }
 
-    console.log(`[namche-api-proxy] source=${sourceId} topic=${topic} host=${hostId} status=${upstream.status} bytes=${body.byteLength}`);
+    console.log(`[namche-api-proxy] source=${sourceId} topic=${topic} host=${hostId} status=${upstream.status} bytes=${body ? body.byteLength : 0}`);
     return new Response(responseBody, { status: upstream.status, headers: responseHeaders });
   } catch (error) {
     const code = error?.name === 'AbortError' ? 504 : 502;
