@@ -95,6 +95,7 @@ See examples:
 - `PORT` (default `8787`)
 - `KRISP_AUTHORIZATION`
 - `OPENCLAW_HOOKS_TOKEN_TASHI`
+- `LOG_LEVEL` (`error`, `warn`, `info`, `debug`; default `info`)
 
 See examples:
 
