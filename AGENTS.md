@@ -3,7 +3,7 @@
 ## Project
 
 Webhook relay service for Namche.
-Receives webhooks from configured apps and forwards them to configured hosts.
+Current production flow accepts Krisp webhooks and forwards them to OpenClaw on Tashi.
 
 Built with Hono + Node.js (ESM JavaScript).
 
@@ -21,6 +21,15 @@ Everything in English: code, docs, commit messages.
 6. After approval, merge to main (`gh pr merge --squash`)
 
 Never commit directly to main.
+
+## Commit Messages
+
+Use commitlint-compatible Conventional Commits, for example:
+
+- `feat: ...`
+- `fix: ...`
+- `docs: ...`
+- `chore: ...`
 
 ## Development
 
@@ -40,28 +49,25 @@ npm start
 
 Do not deploy app source into nginx web root (`/var/www/html`).
 
-## Architecture
+## Active Routing
 
-```
-External app (GitHub, Krisp, ...)
-  → api.namche.ai (Cloudflare + nginx)
-    → namche-api-proxy (Node service on 127.0.0.1:3000)
-      → host OpenClaw API over Tailscale HTTPS
-```
+Current supported webhook endpoint:
 
-## Routing Model
+- `POST /v1/webhooks/apps/krisp`
 
-- `apps`: webhook source type (`github`, `krisp`)
-- `hosts`: OpenClaw destination host (`tashi`, `pema`, `nima`)
-- Endpoint families:
-  - `/v1/webhooks/apps/...`
-  - `/v1/webhooks/hosts/...`
+Current source and destination:
 
-Routing and host/source matrix are baked into `index.mjs`.
+- source: Krisp (`Authorization` must match `KRISP_AUTHORIZATION`)
+- destination: Tashi OpenClaw hook endpoint via Tailscale HTTPS
+
+## Logging
+
+- `LOG_LEVEL` supports: `error`, `warn`, `info`, `debug`
+- `debug` logs include webhook payload details
 
 ## Key Files
 
-- `index.mjs` — server, auth checks, and forwarding logic
+- `index.mjs` — runtime server, auth checks, forwarding, logging
 - `.github/workflows/deploy.yaml` — deploy to Bertrand
 - `docs/namche-api-proxy.service.example` — systemd unit template
 - `docs/proxy.env.example` — production env template
