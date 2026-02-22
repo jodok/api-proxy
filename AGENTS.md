@@ -3,7 +3,7 @@
 ## Project
 
 Webhook relay service for Namche.
-Receives webhooks from external services (for now: Tashi) and forwards them to an agent endpoint.
+Receives webhooks from configured apps and forwards them to configured hosts.
 
 Built with Hono + Node.js (ESM JavaScript).
 
@@ -43,19 +43,25 @@ Do not deploy app source into nginx web root (`/var/www/html`).
 ## Architecture
 
 ```
-External service (GitHub, ...)
+External app (GitHub, Krisp, ...)
   → api.namche.ai (Cloudflare + nginx)
     → namche-api-proxy (Node service on 127.0.0.1:3000)
-      → target agent `/webhooks/:source` endpoint
+      → host OpenClaw API over Tailscale HTTPS
 ```
 
-## Config
+## Routing Model
 
-Routing is baked into `index.mjs` and currently contains only `tashi`.
+- `apps`: webhook source type (`github`, `krisp`)
+- `hosts`: OpenClaw destination host (`tashi`, `pema`, `nima`)
+- Endpoint families:
+  - `/v1/webhooks/apps/...`
+  - `/v1/webhooks/hosts/...`
+
+Routing and host/source matrix are baked into `index.mjs`.
 
 ## Key Files
 
-- `index.mjs` — server and forwarding logic
+- `index.mjs` — server, auth checks, and forwarding logic
 - `.github/workflows/deploy.yaml` — deploy to Bertrand
 - `docs/namche-api-proxy.service.example` — systemd unit template
 - `docs/proxy.env.example` — production env template

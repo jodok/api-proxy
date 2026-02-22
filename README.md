@@ -5,27 +5,39 @@ Hono service for `api.namche.ai`.
 ## Purpose
 
 - receive external webhooks
-- route by agent path (`/webhooks/:agent/:source`)
-- forward webhooks to agent machines over Tailscale
+- validate source-specific authentication
+- forward webhooks to OpenClaw hosts over Tailscale HTTPS
 
 ## Endpoints
 
 - `GET /healthz`
-- `POST /webhooks/:agent/:source`
+- `POST /v1/webhooks/apps/...`
+- `POST /v1/webhooks/hosts/...`
 
-Example:
+Accepted path shapes:
 
-- `POST /webhooks/tashi/github`
+- `POST /v1/webhooks/apps/:source/hosts/:host`
+- `POST /v1/webhooks/apps/:source/:host`
+- `POST /v1/webhooks/hosts/:host/apps/:source`
+- `POST /v1/webhooks/hosts/:host/:source`
 
-## Baked-In Routing
+Optional extra segment sets webhook topic sent upstream:
 
-Routing is built into `index.mjs`.
-Current default config contains only:
+- `POST /v1/webhooks/apps/:source/hosts/:host/:topic`
+- `POST /v1/webhooks/hosts/:host/apps/:source/:topic`
 
-- agent: `tashi`
-- target base URL: `http://100.64.0.11:8787`
-- ingress secret env: `WEBHOOK_SECRET_TASHI_IN`
-- forward secret env: `WEBHOOK_SECRET_TASHI_OUT`
+## Baked-In Matrix
+
+Sources:
+
+- `github` (auth via `X-Hub-Signature-256` with `GITHUB_WEBHOOK_SECRET`)
+- `krisp` (auth via `Authorization` header matching `KRISP_AUTHORIZATION`)
+
+Hosts (via Tailscale serve HTTPS):
+
+- `tashi` -> `https://tashi.silverside-mermaid.ts.net`
+- `pema` -> `https://pema.silverside-mermaid.ts.net`
+- `nima` -> `https://nima.silverside-mermaid.ts.net`
 
 ## Local Run
 
@@ -70,8 +82,11 @@ See examples:
 
 - `HOST` (default `0.0.0.0`)
 - `PORT` (default `8787`)
-- `WEBHOOK_SECRET_TASHI_IN`
-- `WEBHOOK_SECRET_TASHI_OUT`
+- `GITHUB_WEBHOOK_SECRET`
+- `KRISP_AUTHORIZATION`
+- `WEBHOOK_SECRET_TASHI_OUT` (optional)
+- `WEBHOOK_SECRET_PEMA_OUT` (optional)
+- `WEBHOOK_SECRET_NIMA_OUT` (optional)
 
 See examples:
 

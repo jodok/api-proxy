@@ -1,3 +1,5 @@
+import crypto from 'node:crypto';
+
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 
@@ -5,17 +7,42 @@ const app = new Hono();
 
 const listenHost = process.env.HOST ?? '0.0.0.0';
 const listenPort = Number(process.env.PORT ?? 8787);
-const agents = {
+
+const hosts = {
   tashi: {
-    targetBaseUrl: 'http://100.64.0.11:8787',
-    ingressSecretEnv: 'WEBHOOK_SECRET_TASHI_IN',
+    targetBaseUrl: 'https://tashi.silverside-mermaid.ts.net',
     forwardSecretEnv: 'WEBHOOK_SECRET_TASHI_OUT',
+    timeoutMs: 15000,
+  },
+  pema: {
+    targetBaseUrl: 'https://pema.silverside-mermaid.ts.net',
+    forwardSecretEnv: 'WEBHOOK_SECRET_PEMA_OUT',
+    timeoutMs: 15000,
+  },
+  nima: {
+    targetBaseUrl: 'https://nima.silverside-mermaid.ts.net',
+    forwardSecretEnv: 'WEBHOOK_SECRET_NIMA_OUT',
     timeoutMs: 15000,
   },
 };
 
-function getAgent(agentId) {
-  return agents[agentId] ?? null;
+const sources = {
+  github: {
+    auth: 'github_signature',
+    secretEnv: 'GITHUB_WEBHOOK_SECRET',
+  },
+  krisp: {
+    auth: 'authorization_header',
+    authorizationEnv: 'KRISP_AUTHORIZATION',
+  },
+};
+
+function getHost(hostId) {
+  return hosts[hostId] ?? null;
+}
+
+function getSource(sourceId) {
+  return sources[sourceId] ?? null;
 }
 
 function buildForwardUrl(baseUrl, source, queryString) {
@@ -50,43 +77,125 @@ function buildForwardHeaders(requestHeaders, remoteAddress, hostHeader, forwardS
   return headers;
 }
 
-app.get('/healthz', (c) => {
-  return c.json({ ok: true, service: 'namche-api-proxy', agents: Object.keys(agents) });
-});
-
-app.post('/webhooks/:agent/:source', async (c) => {
-  const agentId = c.req.param('agent');
-  const source = c.req.param('source');
-  const agent = getAgent(agentId);
-
-  if (!agent) {
-    return c.json({ ok: false, error: `Unknown agent '${agentId}'` }, 404);
+function verifyGithubSignature(bodyBytes, providedSignature, secret) {
+  if (!providedSignature || !providedSignature.startsWith('sha256=')) {
+    return false;
   }
 
-  const ingressSecretEnv = agent.ingressSecretEnv;
-  const expectedIngressSecret = ingressSecretEnv ? process.env[ingressSecretEnv] : undefined;
+  const expectedDigest = crypto
+    .createHmac('sha256', secret)
+    .update(bodyBytes)
+    .digest('hex');
+  const expectedSignature = `sha256=${expectedDigest}`;
 
-  if (expectedIngressSecret) {
-    const provided = c.req.header('x-webhook-secret');
-    if (!provided || provided !== expectedIngressSecret) {
+  const providedBuffer = Buffer.from(providedSignature, 'utf8');
+  const expectedBuffer = Buffer.from(expectedSignature, 'utf8');
+
+  if (providedBuffer.length !== expectedBuffer.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(providedBuffer, expectedBuffer);
+}
+
+function parseAppsPath(pathParam) {
+  const segments = String(pathParam ?? '')
+    .split('/')
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (segments.length < 2) return null;
+
+  if (segments[1] === 'hosts') {
+    if (segments.length < 3) return null;
+    return {
+      source: segments[0],
+      host: segments[2],
+      topic: segments[3] ?? segments[0],
+    };
+  }
+
+  return {
+    source: segments[0],
+    host: segments[1],
+    topic: segments[2] ?? segments[0],
+  };
+}
+
+function parseHostsPath(pathParam) {
+  const segments = String(pathParam ?? '')
+    .split('/')
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (segments.length < 2) return null;
+
+  if (segments[1] === 'apps') {
+    if (segments.length < 3) return null;
+    return {
+      host: segments[0],
+      source: segments[2],
+      topic: segments[3] ?? segments[2],
+    };
+  }
+
+  return {
+    host: segments[0],
+    source: segments[1],
+    topic: segments[2] ?? segments[1],
+  };
+}
+
+async function handleWebhookForward(c, resolved) {
+  const sourceId = resolved.source;
+  const hostId = resolved.host;
+  const topic = resolved.topic;
+
+  const source = getSource(sourceId);
+  if (!source) {
+    return c.json({ ok: false, error: `Unknown source '${sourceId}'` }, 404);
+  }
+
+  const host = getHost(hostId);
+  if (!host) {
+    return c.json({ ok: false, error: `Unknown host '${hostId}'` }, 404);
+  }
+
+  const body = await c.req.arrayBuffer();
+
+  if (source.auth === 'github_signature') {
+    const secret = process.env[source.secretEnv];
+    if (!secret) {
+      return c.json({ ok: false, error: `Missing env '${source.secretEnv}'` }, 500);
+    }
+
+    const signature = c.req.header('x-hub-signature-256');
+    const ok = verifyGithubSignature(new Uint8Array(body), signature, secret);
+    if (!ok) {
       return c.json({ ok: false, error: 'unauthorized' }, 401);
     }
   }
 
-  const targetBaseUrl = agent.targetBaseUrl;
-  if (!targetBaseUrl) {
-    return c.json({ ok: false, error: `Missing targetBaseUrl for agent '${agentId}'` }, 500);
+  if (source.auth === 'authorization_header') {
+    const expectedAuth = process.env[source.authorizationEnv];
+    if (!expectedAuth) {
+      return c.json({ ok: false, error: `Missing env '${source.authorizationEnv}'` }, 500);
+    }
+
+    const providedAuth = c.req.header('authorization');
+    if (!providedAuth || providedAuth !== expectedAuth) {
+      return c.json({ ok: false, error: 'unauthorized' }, 401);
+    }
   }
 
-  const forwardSecretEnv = agent.forwardSecretEnv;
+  const forwardSecretEnv = host.forwardSecretEnv;
   const forwardSecret = forwardSecretEnv ? process.env[forwardSecretEnv] : undefined;
 
-  const body = await c.req.arrayBuffer();
   const queryString = new URL(c.req.url).searchParams.toString();
-  const url = buildForwardUrl(targetBaseUrl, source, queryString);
+  const url = buildForwardUrl(host.targetBaseUrl, topic, queryString);
   const headers = buildForwardHeaders(c.req.raw.headers, c.env?.incoming?.remote?.address, c.req.header('host'), forwardSecret);
 
-  const timeoutMs = Number(agent.timeoutMs ?? 15000);
+  const timeoutMs = Number(host.timeoutMs ?? 15000);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -106,24 +215,59 @@ app.post('/webhooks/:agent/:source', async (c) => {
       responseHeaders.set('content-type', contentType);
     }
 
-    console.log(`[namche-api-proxy] agent=${agentId} source=${source} status=${upstream.status} bytes=${body.byteLength}`);
+    console.log(`[namche-api-proxy] source=${sourceId} topic=${topic} host=${hostId} status=${upstream.status} bytes=${body.byteLength}`);
     return new Response(responseBody, { status: upstream.status, headers: responseHeaders });
   } catch (error) {
     const code = error?.name === 'AbortError' ? 504 : 502;
     const message = error instanceof Error ? error.message : 'forward request failed';
-    console.error(`[namche-api-proxy] agent=${agentId} source=${source} error=${message}`);
+    console.error(`[namche-api-proxy] source=${sourceId} topic=${topic} host=${hostId} error=${message}`);
     return c.json({ ok: false, error: message }, code);
   } finally {
     clearTimeout(timeout);
   }
+}
+
+app.get('/healthz', (c) => {
+  return c.json({
+    ok: true,
+    service: 'namche-api-proxy',
+    sources: Object.keys(sources),
+    hosts: Object.keys(hosts),
+    routes: [
+      '/v1/webhooks/apps/*',
+      '/v1/webhooks/hosts/*',
+    ],
+  });
+});
+
+app.post('/v1/webhooks/apps/*', async (c) => {
+  const resolved = parseAppsPath(c.req.param('*'));
+  if (!resolved) {
+    return c.json({ ok: false, error: 'invalid_path' }, 400);
+  }
+  return handleWebhookForward(c, resolved);
+});
+
+app.post('/v1/webhooks/hosts/*', async (c) => {
+  const resolved = parseHostsPath(c.req.param('*'));
+  if (!resolved) {
+    return c.json({ ok: false, error: 'invalid_path' }, 400);
+  }
+  return handleWebhookForward(c, resolved);
 });
 
 app.all('*', (c) => {
   return c.json({
     ok: false,
     error: 'not_found',
-    usage: 'POST /webhooks/:agent/:source',
-    agents: Object.keys(agents),
+    usage: [
+      'POST /v1/webhooks/apps/:source/hosts/:host',
+      'POST /v1/webhooks/apps/:source/:host',
+      'POST /v1/webhooks/hosts/:host/apps/:source',
+      'POST /v1/webhooks/hosts/:host/:source',
+    ],
+    sources: Object.keys(sources),
+    hosts: Object.keys(hosts),
   }, 404);
 });
 
