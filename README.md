@@ -17,15 +17,15 @@ Example:
 
 - `POST /webhooks/tashi/github`
 
-## Config
+## Baked-In Routing
 
-Default config file:
+Routing is built into `index.mjs`.
+Current default config contains only:
 
-- `routes.config.json`
-
-Override with env:
-
-- `NAMCHE_PROXY_CONFIG=/path/to/routes.config.json`
+- agent: `tashi`
+- target base URL: `http://100.64.0.11:8787`
+- ingress secret env: `WEBHOOK_SECRET_TASHI_IN`
+- forward secret env: `WEBHOOK_SECRET_TASHI_OUT`
 
 ## Local Run
 
@@ -63,17 +63,16 @@ So the systemd env on Bertrand must set:
 
 See examples:
 
-- `docs/examples/env/namche-api-proxy.bertrand.env.example`
-- `docs/examples/systemd/namche-api-proxy.service.example`
+- `docs/proxy.env.example`
+- `docs/namche-api-proxy.service.example`
 
 ## Env Variables
 
 - `HOST` (default `0.0.0.0`)
 - `PORT` (default `8787`)
-- ingress secret env vars referenced by `ingressSecretEnv`
-- forwarding secret env vars referenced by `forwardSecretEnv`
+- `WEBHOOK_SECRET_TASHI_IN`
+- `WEBHOOK_SECRET_TASHI_OUT`
 
 See examples:
 
-- `docs/examples/config/routes.config.json.example`
-- `docs/examples/env/namche-api-proxy.env.example`
+- `docs/proxy.env.example`

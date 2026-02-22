@@ -35,7 +35,7 @@ npm start
 - Nginx on `bertrand.batlogg.com` proxies to `127.0.0.1:3000`
 - App deploy path: `/home/deploy/apps/namche-api-proxy`
 - Systemd service: `namche-api-proxy.service`
-- Systemd env file: `/etc/namche-api-proxy/namche-api-proxy.env`
+- Systemd env file: `/etc/namche-api-proxy/proxy.env`
 - CI workflow: `.github/workflows/deploy.yaml`
 
 Do not deploy app source into nginx web root (`/var/www/html`).
@@ -51,14 +51,11 @@ External service (GitHub, ...)
 
 ## Config
 
-- Main config file: `routes.config.json`
-- Optional override: `NAMCHE_PROXY_CONFIG=/path/to/routes.config.json`
-- Current default agent config contains only `tashi`
+Routing is baked into `index.mjs` and currently contains only `tashi`.
 
 ## Key Files
 
 - `index.mjs` — server and forwarding logic
-- `routes.config.json` — local routing config
 - `.github/workflows/deploy.yaml` — deploy to Bertrand
-- `docs/examples/systemd/namche-api-proxy.service.example` — systemd unit template
-- `docs/examples/env/namche-api-proxy.bertrand.env.example` — production env template
+- `docs/namche-api-proxy.service.example` — systemd unit template
+- `docs/proxy.env.example` — production env template

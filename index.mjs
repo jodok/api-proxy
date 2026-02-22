@@ -1,22 +1,18 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 
 const app = new Hono();
 
-const configPath = resolve(process.cwd(), process.env.NAMCHE_PROXY_CONFIG ?? 'routes.config.json');
-
-if (!existsSync(configPath)) {
-  throw new Error(`Proxy config not found: ${configPath}`);
-}
-
-const config = JSON.parse(readFileSync(configPath, 'utf-8'));
-
-const agents = config.agents ?? {};
-const listenHost = process.env.HOST ?? config.listen?.host ?? '0.0.0.0';
-const listenPort = Number(process.env.PORT ?? config.listen?.port ?? 8787);
+const listenHost = process.env.HOST ?? '0.0.0.0';
+const listenPort = Number(process.env.PORT ?? 8787);
+const agents = {
+  tashi: {
+    targetBaseUrl: 'http://100.64.0.11:8787',
+    ingressSecretEnv: 'WEBHOOK_SECRET_TASHI_IN',
+    forwardSecretEnv: 'WEBHOOK_SECRET_TASHI_OUT',
+    timeoutMs: 15000,
+  },
+};
 
 function getAgent(agentId) {
   return agents[agentId] ?? null;
@@ -55,7 +51,7 @@ function buildForwardHeaders(requestHeaders, remoteAddress, hostHeader, forwardS
 }
 
 app.get('/healthz', (c) => {
-  return c.json({ ok: true, service: 'namche-api-proxy', configPath, agents: Object.keys(agents) });
+  return c.json({ ok: true, service: 'namche-api-proxy', agents: Object.keys(agents) });
 });
 
 app.post('/webhooks/:agent/:source', async (c) => {
@@ -133,5 +129,4 @@ app.all('*', (c) => {
 
 serve({ fetch: app.fetch, hostname: listenHost, port: listenPort }, () => {
   console.log(`[namche-api-proxy] listening on ${listenHost}:${listenPort}`);
-  console.log(`[namche-api-proxy] config ${configPath}`);
 });
