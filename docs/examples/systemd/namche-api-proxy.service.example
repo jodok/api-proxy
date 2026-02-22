@@ -1,0 +1,17 @@
+[Unit]
+Description=Namche API Proxy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=deploy
+Group=www-data
+WorkingDirectory=/home/deploy/apps/namche-api-proxy
+EnvironmentFile=/etc/namche-api-proxy/namche-api-proxy.env
+ExecStart=/usr/bin/node /home/deploy/apps/namche-api-proxy/index.mjs
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

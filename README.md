@@ -1,4 +1,4 @@
-# webhook-proxy
+# namche-api-proxy
 
 Hono service for `api.namche.ai`.
 
@@ -34,6 +34,38 @@ npm install
 npm start
 ```
 
+## Deploy (bertrand.batlogg.com)
+
+GitHub Actions deploy is defined in:
+
+- `.github/workflows/deploy.yaml`
+
+It deploys to:
+
+- host: `bertrand.batlogg.com`
+- path: `/home/deploy/apps/namche-api-proxy`
+- restart target: `namche-api-proxy.service`
+
+Required GitHub settings:
+
+- secret: `DEPLOY_SSH_KEY`
+- variable: `DEPLOY_KNOWN_HOSTS` (for example from `ssh-keyscan bertrand.batlogg.com`)
+
+Nginx integration (from infra):
+
+- `api.namche.ai` proxies to `http://127.0.0.1:3000`
+- proxy headers come from `/etc/nginx/proxy_params`
+
+So the systemd env on Bertrand must set:
+
+- `HOST=127.0.0.1`
+- `PORT=3000`
+
+See examples:
+
+- `docs/examples/env/namche-api-proxy.bertrand.env.example`
+- `docs/examples/systemd/namche-api-proxy.service.example`
+
 ## Env Variables
 
 - `HOST` (default `0.0.0.0`)
@@ -44,4 +76,4 @@ npm start
 See examples:
 
 - `docs/examples/config/routes.config.json.example`
-- `docs/examples/env/webhook-proxy.env.example`
+- `docs/examples/env/namche-api-proxy.env.example`

@@ -40,9 +40,12 @@ function buildForwardHeaders(requestHeaders, remoteAddress, hostHeader, forwardS
     }
   }
 
-  if (remoteAddress) headers.set('x-forwarded-for', remoteAddress);
+  const existingForwardedFor = headers.get('x-forwarded-for');
+  if (!existingForwardedFor && remoteAddress) {
+    headers.set('x-forwarded-for', remoteAddress);
+  }
   if (hostHeader) headers.set('x-forwarded-host', hostHeader);
-  headers.set('x-namche-proxy', 'api.namche.ai');
+  headers.set('x-namche-proxy', 'namche-api-proxy');
 
   if (forwardSecret) {
     headers.set('x-webhook-secret', forwardSecret);
@@ -52,7 +55,7 @@ function buildForwardHeaders(requestHeaders, remoteAddress, hostHeader, forwardS
 }
 
 app.get('/healthz', (c) => {
-  return c.json({ ok: true, service: 'webhook-proxy', configPath, agents: Object.keys(agents) });
+  return c.json({ ok: true, service: 'namche-api-proxy', configPath, agents: Object.keys(agents) });
 });
 
 app.post('/webhooks/:agent/:source', async (c) => {
@@ -107,12 +110,12 @@ app.post('/webhooks/:agent/:source', async (c) => {
       responseHeaders.set('content-type', contentType);
     }
 
-    console.log(`[webhook-proxy] agent=${agentId} source=${source} status=${upstream.status} bytes=${body.byteLength}`);
+    console.log(`[namche-api-proxy] agent=${agentId} source=${source} status=${upstream.status} bytes=${body.byteLength}`);
     return new Response(responseBody, { status: upstream.status, headers: responseHeaders });
   } catch (error) {
     const code = error?.name === 'AbortError' ? 504 : 502;
     const message = error instanceof Error ? error.message : 'forward request failed';
-    console.error(`[webhook-proxy] agent=${agentId} source=${source} error=${message}`);
+    console.error(`[namche-api-proxy] agent=${agentId} source=${source} error=${message}`);
     return c.json({ ok: false, error: message }, code);
   } finally {
     clearTimeout(timeout);
@@ -129,6 +132,6 @@ app.all('*', (c) => {
 });
 
 serve({ fetch: app.fetch, hostname: listenHost, port: listenPort }, () => {
-  console.log(`[webhook-proxy] listening on ${listenHost}:${listenPort}`);
-  console.log(`[webhook-proxy] config ${configPath}`);
+  console.log(`[namche-api-proxy] listening on ${listenHost}:${listenPort}`);
+  console.log(`[namche-api-proxy] config ${configPath}`);
 });
