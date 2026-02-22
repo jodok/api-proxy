@@ -1,10 +1,24 @@
+import { existsSync, readFileSync } from 'node:fs';
+
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
+import yaml from 'js-yaml';
 
 const app = new Hono();
 
-const listenHost = process.env.HOST ?? '0.0.0.0';
-const listenPort = Number(process.env.PORT ?? 8787);
+const DEFAULT_CONFIG_PATH = '/etc/namche-api-proxy/config.yaml';
+const configPath = process.env.CONFIG_PATH ?? DEFAULT_CONFIG_PATH;
+const FORWARD_TIMEOUT_MS = 15000;
+
+const APP_DEFINITIONS = {
+  krisp: {
+    path: '/v1/webhooks/apps/krisp',
+    payloadName: 'notetaker:krisp',
+  },
+};
+
+const rawConfig = loadConfig(configPath);
+const config = normalizeConfig(rawConfig);
 
 const LOG_LEVELS = {
   error: 0,
@@ -13,7 +27,7 @@ const LOG_LEVELS = {
   debug: 3,
 };
 
-const configuredLogLevel = String(process.env.LOG_LEVEL ?? 'info').toLowerCase();
+const configuredLogLevel = config.logLevel;
 const activeLogLevel = LOG_LEVELS[configuredLogLevel] ?? LOG_LEVELS.info;
 
 function shouldLog(level) {
@@ -27,12 +41,6 @@ function log(level, message) {
   else console.log(message);
 }
 
-const KRISP_HOST = {
-  id: 'tashi',
-  targetBaseUrl: 'https://tashi.silverside-mermaid.ts.net',
-  timeoutMs: 15000,
-};
-
 app.use('*', async (c, next) => {
   const startedAt = Date.now();
   await next();
@@ -40,60 +48,176 @@ app.use('*', async (c, next) => {
   log('info', `[namche-api-proxy] request method=${c.req.method} path=${new URL(c.req.url).pathname} status=${c.res.status} duration_ms=${durationMs}`);
 });
 
-function buildKrispHookUrl(baseUrl) {
+app.get('/healthz', (c) => {
+  return c.json({
+    ok: true,
+    service: 'namche-api-proxy',
+    configPath,
+    logLevel: configuredLogLevel,
+    apps: Object.keys(APP_DEFINITIONS),
+    bots: Object.keys(config.bots),
+    routes: Object.values(APP_DEFINITIONS).map((def) => def.path),
+  });
+});
+
+app.post(APP_DEFINITIONS.krisp.path, handleKrispWebhook);
+
+app.post('/v1/webhooks/apps/*', (c) => {
+  log('warn', `[namche-api-proxy] invalid_path family=apps path=${new URL(c.req.url).pathname}`);
+  return c.json({ ok: false, error: 'invalid_path' }, 400);
+});
+
+app.post('/v1/webhooks/bots/*', (c) => {
+  log('warn', `[namche-api-proxy] invalid_path family=bots path=${new URL(c.req.url).pathname}`);
+  return c.json({ ok: false, error: 'invalid_path' }, 400);
+});
+
+app.all('*', (c) => {
+  return c.json({
+    ok: false,
+    error: 'not_found',
+    usage: Object.values(APP_DEFINITIONS).map((def) => `POST ${def.path}`),
+  }, 404);
+});
+
+serve({ fetch: app.fetch, hostname: config.listen.host, port: config.listen.port }, () => {
+  log('info', `[namche-api-proxy] listening on ${config.listen.host}:${config.listen.port} log_level=${configuredLogLevel} config=${configPath}`);
+});
+
+function loadConfig(path) {
+  if (!existsSync(path)) {
+    throw new Error(`[namche-api-proxy] Config file not found at ${path}`);
+  }
+
+  const raw = readFileSync(path, 'utf8');
+  const parsed = yaml.load(raw);
+
+  if (!parsed || typeof parsed !== 'object') {
+    throw new Error('[namche-api-proxy] Config file is empty or invalid');
+  }
+
+  return parsed;
+}
+
+function normalizeConfig(raw) {
+  const listen = raw.listen ?? {};
+  const bots = raw.bots ?? {};
+  const apps = raw.apps ?? {};
+
+  if (!bots || typeof bots !== 'object') {
+    throw new Error('[namche-api-proxy] Config must define bots object');
+  }
+
+  if (!apps || typeof apps !== 'object') {
+    throw new Error('[namche-api-proxy] Config must define apps object');
+  }
+
+  const normalizedBots = {};
+  for (const [botId, bot] of Object.entries(bots)) {
+    if (!bot || typeof bot !== 'object') {
+      throw new Error(`[namche-api-proxy] Invalid bot config for '${botId}'`);
+    }
+
+    const url = String(bot.url ?? '').trim();
+    const openclawHooksToken = String(bot.openclawHooksToken ?? '').trim();
+
+    if (!url) {
+      throw new Error(`[namche-api-proxy] Bot '${botId}' missing url`);
+    }
+
+    if (!openclawHooksToken) {
+      throw new Error(`[namche-api-proxy] Bot '${botId}' missing openclawHooksToken`);
+    }
+
+    normalizedBots[botId] = {
+      url,
+      openclawHooksToken,
+    };
+  }
+
+  const normalizedApps = {};
+  for (const [appId, appDef] of Object.entries(APP_DEFINITIONS)) {
+    const app = apps[appId];
+    if (!app || typeof app !== 'object') {
+      throw new Error(`[namche-api-proxy] App '${appId}' config is required`);
+    }
+
+    const incomingAuthorization = String(app.incomingAuthorization ?? '').trim();
+    const targetBot = String(app.targetBot ?? '').trim();
+
+    if (!incomingAuthorization) {
+      throw new Error(`[namche-api-proxy] App '${appId}' missing incomingAuthorization`);
+    }
+
+    if (!targetBot) {
+      throw new Error(`[namche-api-proxy] App '${appId}' missing targetBot`);
+    }
+
+    if (!normalizedBots[targetBot]) {
+      throw new Error(`[namche-api-proxy] App '${appId}' references unknown bot '${targetBot}'`);
+    }
+
+    normalizedApps[appId] = {
+      ...appDef,
+      incomingAuthorization,
+      targetBot,
+    };
+  }
+
+  return {
+    listen: {
+      host: String(listen.host ?? '127.0.0.1'),
+      port: Number(listen.port ?? 3000),
+    },
+    logLevel: String(raw.logLevel ?? 'info').toLowerCase(),
+    bots: normalizedBots,
+    apps: normalizedApps,
+  };
+}
+
+function buildHooksUrl(baseUrl) {
   const root = String(baseUrl ?? '').replace(/\/$/, '');
   return `${root}/hooks/agent`;
 }
 
 async function handleKrispWebhook(c) {
   const path = new URL(c.req.url).pathname;
-
-  const krispAuthorization = process.env.KRISP_AUTHORIZATION;
-  if (!krispAuthorization) {
-    log('error', "[namche-api-proxy] config_error missing_env=KRISP_AUTHORIZATION");
-    return c.json({ ok: false, error: "Missing env 'KRISP_AUTHORIZATION'" }, 500);
-  }
+  const appConfig = config.apps.krisp;
+  const botConfig = config.bots[appConfig.targetBot];
 
   const providedAuth = c.req.header('authorization');
-  if (!providedAuth || providedAuth !== krispAuthorization) {
-    log('warn', `[namche-api-proxy] unauthorized source=krisp reason=authorization path=${path}`);
+  if (!providedAuth || providedAuth !== appConfig.incomingAuthorization) {
+    log('warn', `[namche-api-proxy] unauthorized app=krisp reason=authorization path=${path}`);
     return c.json({ ok: false, error: 'unauthorized' }, 401);
-  }
-
-  const openclawHooksToken = process.env.OPENCLAW_HOOKS_TOKEN_TASHI;
-  if (!openclawHooksToken) {
-    log('error', "[namche-api-proxy] config_error missing_env=OPENCLAW_HOOKS_TOKEN_TASHI");
-    return c.json({ ok: false, error: "Missing env 'OPENCLAW_HOOKS_TOKEN_TASHI'" }, 500);
   }
 
   const body = await c.req.arrayBuffer();
   const message = Buffer.from(body).toString('utf8');
 
   if (shouldLog('debug')) {
-    log('debug', `[namche-api-proxy] krisp_incoming_payload path=${path} bytes=${body.byteLength} body=${message}`);
+    log('debug', `[namche-api-proxy] incoming_payload app=krisp bytes=${body.byteLength} body=${message}`);
   }
 
-  const timeoutMs = Number(KRISP_HOST.timeoutMs ?? 15000);
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const timeout = setTimeout(() => controller.abort(), FORWARD_TIMEOUT_MS);
 
   try {
-    const url = buildKrispHookUrl(KRISP_HOST.targetBaseUrl);
+    const url = buildHooksUrl(botConfig.url);
     const payload = JSON.stringify({
-      name: 'notetaker:krisp',
+      name: APP_DEFINITIONS.krisp.payloadName,
       message,
       deliver: true,
       wakeMode: 'now',
     });
 
     if (shouldLog('debug')) {
-      log('debug', `[namche-api-proxy] krisp_forward_payload host=${KRISP_HOST.id} body=${payload}`);
+      log('debug', `[namche-api-proxy] forward_payload app=krisp bot=${appConfig.targetBot} url=${url} body=${payload}`);
     }
 
     const upstream = await fetch(url, {
       method: 'POST',
       headers: {
-        authorization: `Bearer ${openclawHooksToken}`,
+        authorization: botConfig.openclawHooksToken,
         'content-type': 'application/json',
         'x-namche-proxy': 'namche-api-proxy',
       },
@@ -109,51 +233,14 @@ async function handleKrispWebhook(c) {
       responseHeaders.set('content-type', contentType);
     }
 
-    log('info', `[namche-api-proxy] source=krisp host=${KRISP_HOST.id} status=${upstream.status} bytes=${body.byteLength}`);
+    log('info', `[namche-api-proxy] app=krisp bot=${appConfig.targetBot} status=${upstream.status} bytes=${body.byteLength}`);
     return new Response(responseBody, { status: upstream.status, headers: responseHeaders });
   } catch (error) {
     const code = error?.name === 'AbortError' ? 504 : 502;
-    const errMessage = error instanceof Error ? error.message : 'forward request failed';
-    log('error', `[namche-api-proxy] source=krisp host=${KRISP_HOST.id} error=${errMessage}`);
-    return c.json({ ok: false, error: errMessage }, code);
+    const messageText = error instanceof Error ? error.message : 'forward request failed';
+    log('error', `[namche-api-proxy] app=krisp bot=${appConfig.targetBot} error=${messageText}`);
+    return c.json({ ok: false, error: messageText }, code);
   } finally {
     clearTimeout(timeout);
   }
 }
-
-app.get('/healthz', (c) => {
-  return c.json({
-    ok: true,
-    service: 'namche-api-proxy',
-    sources: ['krisp'],
-    hosts: [KRISP_HOST.id],
-    routes: ['/v1/webhooks/apps/krisp'],
-    logLevel: configuredLogLevel,
-  });
-});
-
-app.post('/v1/webhooks/apps/krisp', handleKrispWebhook);
-
-app.post('/v1/webhooks/apps/*', (c) => {
-  log('warn', `[namche-api-proxy] invalid_path family=apps path=${new URL(c.req.url).pathname}`);
-  return c.json({ ok: false, error: 'invalid_path' }, 400);
-});
-
-app.post('/v1/webhooks/hosts/*', (c) => {
-  log('warn', `[namche-api-proxy] invalid_path family=hosts path=${new URL(c.req.url).pathname}`);
-  return c.json({ ok: false, error: 'invalid_path' }, 400);
-});
-
-app.all('*', (c) => {
-  return c.json({
-    ok: false,
-    error: 'not_found',
-    usage: [
-      'POST /v1/webhooks/apps/krisp',
-    ],
-  }, 404);
-});
-
-serve({ fetch: app.fetch, hostname: listenHost, port: listenPort }, () => {
-  log('info', `[namche-api-proxy] listening on ${listenHost}:${listenPort} log_level=${configuredLogLevel}`);
-});

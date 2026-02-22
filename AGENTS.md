@@ -44,30 +44,30 @@ npm start
 - Nginx on `bertrand.batlogg.com` proxies to `127.0.0.1:3000`
 - App deploy path: `/home/deploy/apps/namche-api-proxy`
 - Systemd service: `namche-api-proxy.service`
-- Systemd env file: `/etc/namche-api-proxy/proxy.env`
+- Config file: `/etc/namche-api-proxy/config.yaml`
 - CI workflow: `.github/workflows/deploy.yaml`
 
 Do not deploy app source into nginx web root (`/var/www/html`).
 
-## Active Routing
+## Configuration Model
 
-Current supported webhook endpoint:
+Hardwired app handlers in code (currently `krisp`) use YAML config for wiring and credentials:
 
-- `POST /v1/webhooks/apps/krisp`
+- `bots.<shortname>.url`
+- `bots.<shortname>.openclawHooksToken`
+- `apps.krisp.incomingAuthorization`
+- `apps.krisp.targetBot`
 
-Current source and destination:
-
-- source: Krisp (`Authorization` must match `KRISP_AUTHORIZATION`)
-- destination: Tashi OpenClaw hook endpoint via Tailscale HTTPS
+No enable/disable flags and no timeout config knobs.
 
 ## Logging
 
-- `LOG_LEVEL` supports: `error`, `warn`, `info`, `debug`
-- `debug` logs include webhook payload details
+- `logLevel` is configured in YAML (`error`, `warn`, `info`, `debug`)
+- `debug` logs include payload details
 
 ## Key Files
 
-- `index.mjs` — runtime server, auth checks, forwarding, logging
-- `.github/workflows/deploy.yaml` — deploy to Bertrand
+- `index.mjs` — runtime server, config loading, auth checks, forwarding, logging
+- `docs/config.yaml.example` — config example (including secrets)
 - `docs/namche-api-proxy.service.example` — systemd unit template
-- `docs/proxy.env.example` — production env template
+- `.github/workflows/deploy.yaml` — deploy to Bertrand

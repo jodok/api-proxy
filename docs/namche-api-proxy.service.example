@@ -8,7 +8,7 @@ Type=simple
 User=deploy
 Group=www-data
 WorkingDirectory=/home/deploy/apps/namche-api-proxy
-EnvironmentFile=/etc/namche-api-proxy/proxy.env
+Environment=CONFIG_PATH=/etc/namche-api-proxy/config.yaml
 ExecStart=/usr/bin/node /home/deploy/apps/namche-api-proxy/index.mjs
 Restart=always
 RestartSec=3

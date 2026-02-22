@@ -5,34 +5,49 @@ Hono service for `api.namche.ai`.
 ## Purpose
 
 - receive external webhooks
-- validate source-specific authentication
-- forward webhooks to OpenClaw hosts over Tailscale HTTPS
+- validate app-specific incoming auth
+- forward to OpenClaw bots over Tailscale HTTPS
 
-## Endpoints
+## Current Endpoint
 
-- `GET /healthz`
 - `POST /v1/webhooks/apps/krisp`
 
-## Baked-In Matrix
+## Configuration
 
-Sources:
+Config is loaded from YAML:
 
-- `krisp` (auth via `Authorization: <KRISP_AUTHORIZATION>`)
+- default: `/etc/namche-api-proxy/config.yaml`
+- optional override: `CONFIG_PATH=/custom/path/config.yaml`
 
-Host (via Tailscale serve HTTPS):
+Current config shape:
 
-- `tashi` -> `https://tashi.silverside-mermaid.ts.net`
+- `listen` (`host`, `port`)
+- `logLevel` (`error`, `warn`, `info`, `debug`)
+- `bots`:
+  - keyed by shortname (for example `tashi`)
+  - each bot defines:
+    - `url`
+    - `openclawHooksToken`
+- `apps`:
+  - currently `krisp`
+  - defines:
+    - `incomingAuthorization` (full Authorization header value)
+    - `targetBot` (bot shortname)
+
+See:
+
+- `docs/config.yaml.example`
 
 ## Krisp Forwarding
 
 Incoming check:
 
-- `Authorization: <KRISP_AUTHORIZATION>`
+- request `Authorization` must exactly match `apps.krisp.incomingAuthorization`
 
 Forwarded request:
 
-- `POST https://tashi.silverside-mermaid.ts.net/hooks/agent`
-- `Authorization: Bearer <OPENCLAW_HOOKS_TOKEN_TASHI>`
+- `POST <bots.<targetBot>.url>/hooks/agent`
+- `Authorization: <bots.<targetBot>.openclawHooksToken>`
 - `Content-Type: application/json`
 
 Forwarded payload:
@@ -54,7 +69,7 @@ Expected upstream response:
 
 ```bash
 npm install
-npm start
+CONFIG_PATH=./docs/config.yaml.example npm start
 ```
 
 ## Deploy (bertrand.batlogg.com)
@@ -69,34 +84,17 @@ It deploys to:
 - path: `/home/deploy/apps/namche-api-proxy`
 - restart target: `namche-api-proxy.service`
 
-Required GitHub settings:
-
-- secret: `DEPLOY_SSH_KEY`
-- variable: `DEPLOY_KNOWN_HOSTS` (for example from `ssh-keyscan bertrand.batlogg.com`)
-
 Nginx integration (from infra):
 
 - `api.namche.ai` proxies to `http://127.0.0.1:3000`
 - proxy headers come from `/etc/nginx/proxy_params`
 
-So the systemd env on Bertrand must set:
+Production files on Bertrand:
 
-- `HOST=127.0.0.1`
-- `PORT=3000`
+- `/etc/namche-api-proxy/config.yaml`
 
-See examples:
+Config contains secrets. Restrict file permissions accordingly.
 
-- `docs/proxy.env.example`
+See service template:
+
 - `docs/namche-api-proxy.service.example`
-
-## Env Variables
-
-- `HOST` (default `0.0.0.0`)
-- `PORT` (default `8787`)
-- `KRISP_AUTHORIZATION`
-- `OPENCLAW_HOOKS_TOKEN_TASHI`
-- `LOG_LEVEL` (`error`, `warn`, `info`, `debug`; default `info`)
-
-See examples:
-
-- `docs/proxy.env.example`
