@@ -27,15 +27,14 @@ function buildKrispHookUrl(baseUrl) {
 async function handleKrispWebhook(c) {
   const path = new URL(c.req.url).pathname;
 
-  const krispSecret = process.env.KRISP_WEBHOOK_SECRET;
-  if (!krispSecret) {
-    console.error("[namche-api-proxy] config_error missing_env=KRISP_WEBHOOK_SECRET");
-    return c.json({ ok: false, error: "Missing env 'KRISP_WEBHOOK_SECRET'" }, 500);
+  const krispAuthorization = process.env.KRISP_AUTHORIZATION;
+  if (!krispAuthorization) {
+    console.error("[namche-api-proxy] config_error missing_env=KRISP_AUTHORIZATION");
+    return c.json({ ok: false, error: "Missing env 'KRISP_AUTHORIZATION'" }, 500);
   }
 
-  const expectedAuth = `Bearer ${krispSecret}`;
   const providedAuth = c.req.header('authorization');
-  if (!providedAuth || providedAuth !== expectedAuth) {
+  if (!providedAuth || providedAuth !== krispAuthorization) {
     console.warn(`[namche-api-proxy] unauthorized source=krisp reason=authorization path=${path}`);
     return c.json({ ok: false, error: 'unauthorized' }, 401);
   }

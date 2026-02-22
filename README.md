@@ -17,7 +17,7 @@ Hono service for `api.namche.ai`.
 
 Sources:
 
-- `krisp` (auth via `Authorization: Bearer <KRISP_WEBHOOK_SECRET>`)
+- `krisp` (auth via `Authorization: <KRISP_AUTHORIZATION>`)
 
 Host (via Tailscale serve HTTPS):
 
@@ -27,7 +27,7 @@ Host (via Tailscale serve HTTPS):
 
 Incoming check:
 
-- `Authorization: Bearer <KRISP_WEBHOOK_SECRET>`
+- `Authorization: <KRISP_AUTHORIZATION>`
 
 Forwarded request:
 
@@ -93,7 +93,7 @@ See examples:
 
 - `HOST` (default `0.0.0.0`)
 - `PORT` (default `8787`)
-- `KRISP_WEBHOOK_SECRET`
+- `KRISP_AUTHORIZATION`
 - `OPENCLAW_HOOKS_TOKEN_TASHI`
 
 See examples:
