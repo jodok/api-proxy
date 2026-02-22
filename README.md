@@ -11,33 +11,17 @@ Hono service for `api.namche.ai`.
 ## Endpoints
 
 - `GET /healthz`
-- `POST /v1/webhooks/apps/...`
-- `POST /v1/webhooks/hosts/...`
-
-Accepted path shapes:
-
-- `POST /v1/webhooks/apps/:source/hosts/:host`
-- `POST /v1/webhooks/apps/:source/:host`
-- `POST /v1/webhooks/hosts/:host/apps/:source`
-- `POST /v1/webhooks/hosts/:host/:source`
-
-Optional extra segment sets webhook topic sent upstream:
-
-- `POST /v1/webhooks/apps/:source/hosts/:host/:topic`
-- `POST /v1/webhooks/hosts/:host/apps/:source/:topic`
+- `POST /v1/webhooks/apps/krisp`
 
 ## Baked-In Matrix
 
 Sources:
 
-- `github` (auth via `X-Hub-Signature-256` with `GITHUB_WEBHOOK_SECRET`)
 - `krisp` (auth via `Authorization: Bearer <KRISP_WEBHOOK_SECRET>`)
 
-Hosts (via Tailscale serve HTTPS):
+Host (via Tailscale serve HTTPS):
 
 - `tashi` -> `https://tashi.silverside-mermaid.ts.net`
-- `pema` -> `https://pema.silverside-mermaid.ts.net`
-- `nima` -> `https://nima.silverside-mermaid.ts.net`
 
 ## Krisp Forwarding
 
@@ -45,9 +29,9 @@ Incoming check:
 
 - `Authorization: Bearer <KRISP_WEBHOOK_SECRET>`
 
-Forwarded request (to selected host):
+Forwarded request:
 
-- `POST https://<host>.silverside-mermaid.ts.net/hooks/agent`
+- `POST https://tashi.silverside-mermaid.ts.net/hooks/agent`
 - `Authorization: Bearer <OPENCLAW_HOOKS_TOKEN_TASHI>`
 - `Content-Type: application/json`
 
@@ -109,9 +93,8 @@ See examples:
 
 - `HOST` (default `0.0.0.0`)
 - `PORT` (default `8787`)
-- `GITHUB_WEBHOOK_SECRET`
 - `KRISP_WEBHOOK_SECRET`
-- `OPENCLAW_HOOKS_TOKEN_TASHI` (used only for krisp -> tashi)
+- `OPENCLAW_HOOKS_TOKEN_TASHI`
 
 See examples:
 
