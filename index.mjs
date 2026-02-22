@@ -137,13 +137,13 @@ function normalizeConfig(raw) {
 
   const normalizedApps = {};
   for (const [appId, appDef] of Object.entries(APP_DEFINITIONS)) {
-    const app = apps[appId];
-    if (!app || typeof app !== 'object') {
+    const appConfig = apps[appId];
+    if (!appConfig || typeof appConfig !== 'object') {
       throw new Error(`[namche-api-proxy] App '${appId}' config is required`);
     }
 
-    const incomingAuthorization = String(app.incomingAuthorization ?? '').trim();
-    const targetBot = String(app.targetBot ?? '').trim();
+    const incomingAuthorization = String(appConfig.incomingAuthorization ?? '').trim();
+    const targetBot = String(appConfig.targetBot ?? '').trim();
 
     if (!incomingAuthorization) {
       throw new Error(`[namche-api-proxy] App '${appId}' missing incomingAuthorization`);
@@ -180,13 +180,62 @@ function buildHooksUrl(baseUrl) {
   return `${root}/hooks/agent`;
 }
 
+function getAuthScheme(value) {
+  if (!value) return 'none';
+  const trimmed = String(value).trim();
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith('bearer ')) return 'bearer';
+  return 'raw';
+}
+
+function extractBearerToken(value) {
+  if (!value) return '';
+  const trimmed = String(value).trim();
+  if (!trimmed) return '';
+
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith('bearer ')) {
+    return trimmed.slice(7).trim();
+  }
+
+  return trimmed;
+}
+
+function authorizationMatches(provided, expected) {
+  if (!provided || !expected) return false;
+
+  const providedTrimmed = String(provided).trim();
+  const expectedTrimmed = String(expected).trim();
+
+  if (providedTrimmed === expectedTrimmed) {
+    return true;
+  }
+
+  const providedToken = extractBearerToken(providedTrimmed);
+  const expectedToken = extractBearerToken(expectedTrimmed);
+
+  if (!providedToken || !expectedToken) {
+    return false;
+  }
+
+  return providedToken === expectedToken;
+}
+
 async function handleKrispWebhook(c) {
   const path = new URL(c.req.url).pathname;
   const appConfig = config.apps.krisp;
   const botConfig = config.bots[appConfig.targetBot];
 
   const providedAuth = c.req.header('authorization');
-  if (!providedAuth || providedAuth !== appConfig.incomingAuthorization) {
+  if (!authorizationMatches(providedAuth, appConfig.incomingAuthorization)) {
+    if (shouldLog('debug')) {
+      const providedScheme = getAuthScheme(providedAuth);
+      const expectedScheme = getAuthScheme(appConfig.incomingAuthorization);
+      const providedLen = providedAuth ? providedAuth.trim().length : 0;
+      const expectedLen = appConfig.incomingAuthorization.trim().length;
+      log('debug', `[namche-api-proxy] auth_mismatch app=krisp provided_scheme=${providedScheme} expected_scheme=${expectedScheme} provided_len=${providedLen} expected_len=${expectedLen}`);
+    }
+
     log('warn', `[namche-api-proxy] unauthorized app=krisp reason=authorization path=${path}`);
     return c.json({ ok: false, error: 'unauthorized' }, 401);
   }
