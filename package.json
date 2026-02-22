@@ -1,0 +1,14 @@
+{
+  "name": "webhook-proxy",
+  "version": "0.1.0",
+  "type": "module",
+  "private": false,
+  "scripts": {
+    "dev": "node index.mjs",
+    "start": "node index.mjs"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.4",
+    "hono": "^4.10.2"
+  }
+}

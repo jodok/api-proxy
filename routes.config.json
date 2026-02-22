@@ -1,0 +1,26 @@
+{
+  "listen": {
+    "host": "0.0.0.0",
+    "port": 8787
+  },
+  "agents": {
+    "tashi": {
+      "targetBaseUrl": "http://100.64.0.11:8787",
+      "ingressSecretEnv": "WEBHOOK_SECRET_TASHI_IN",
+      "forwardSecretEnv": "WEBHOOK_SECRET_TASHI_OUT",
+      "timeoutMs": 15000
+    },
+    "nima": {
+      "targetBaseUrl": "http://100.64.0.12:8787",
+      "ingressSecretEnv": "WEBHOOK_SECRET_NIMA_IN",
+      "forwardSecretEnv": "WEBHOOK_SECRET_NIMA_OUT",
+      "timeoutMs": 15000
+    },
+    "pema": {
+      "targetBaseUrl": "http://100.64.0.13:8787",
+      "ingressSecretEnv": "WEBHOOK_SECRET_PEMA_IN",
+      "forwardSecretEnv": "WEBHOOK_SECRET_PEMA_OUT",
+      "timeoutMs": 15000
+    }
+  }
+}
