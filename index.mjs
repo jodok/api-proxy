@@ -12,6 +12,13 @@ const KRISP_HOST = {
   timeoutMs: 15000,
 };
 
+app.use('*', async (c, next) => {
+  const startedAt = Date.now();
+  await next();
+  const durationMs = Date.now() - startedAt;
+  console.log(`[namche-api-proxy] request method=${c.req.method} path=${new URL(c.req.url).pathname} status=${c.res.status} duration_ms=${durationMs}`);
+});
+
 function buildKrispHookUrl(baseUrl) {
   const root = String(baseUrl ?? '').replace(/\/$/, '');
   return `${root}/hooks/agent`;
@@ -22,6 +29,7 @@ async function handleKrispWebhook(c) {
 
   const krispSecret = process.env.KRISP_WEBHOOK_SECRET;
   if (!krispSecret) {
+    console.error("[namche-api-proxy] config_error missing_env=KRISP_WEBHOOK_SECRET");
     return c.json({ ok: false, error: "Missing env 'KRISP_WEBHOOK_SECRET'" }, 500);
   }
 
@@ -34,6 +42,7 @@ async function handleKrispWebhook(c) {
 
   const openclawHooksToken = process.env.OPENCLAW_HOOKS_TOKEN_TASHI;
   if (!openclawHooksToken) {
+    console.error("[namche-api-proxy] config_error missing_env=OPENCLAW_HOOKS_TOKEN_TASHI");
     return c.json({ ok: false, error: "Missing env 'OPENCLAW_HOOKS_TOKEN_TASHI'" }, 500);
   }
 
