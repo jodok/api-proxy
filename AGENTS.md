@@ -53,10 +53,10 @@ Do not deploy app source into nginx web root (`/var/www/html`).
 
 Hardwired app handlers in code (currently `krisp`) use YAML config for wiring and credentials:
 
-- `bots.<shortname>.url`
-- `bots.<shortname>.openclawHooksToken`
+- `agents.<shortname>.url`
+- `agents.<shortname>.openclawHooksToken`
 - `apps.krisp.incomingAuthorization`
-- `apps.krisp.targetBot`
+- `apps.krisp.targetAgent`
 
 No enable/disable flags and no timeout config knobs.
 

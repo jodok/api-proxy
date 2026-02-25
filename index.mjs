@@ -55,7 +55,7 @@ app.get('/healthz', (c) => {
     configPath,
     logLevel: configuredLogLevel,
     apps: Object.keys(APP_DEFINITIONS),
-    bots: Object.keys(config.bots),
+    agents: Object.keys(config.agents),
     routes: Object.values(APP_DEFINITIONS).map((def) => def.path),
   });
 });
@@ -67,8 +67,8 @@ app.post('/v1/webhooks/apps/*', (c) => {
   return c.json({ ok: false, error: 'invalid_path' }, 400);
 });
 
-app.post('/v1/webhooks/bots/*', (c) => {
-  log('warn', `[namche-api-proxy] invalid_path family=bots path=${new URL(c.req.url).pathname}`);
+app.post('/v1/webhooks/agents/*', (c) => {
+  log('warn', `[namche-api-proxy] invalid_path family=agents path=${new URL(c.req.url).pathname}`);
   return c.json({ ok: false, error: 'invalid_path' }, 400);
 });
 
@@ -101,35 +101,35 @@ function loadConfig(path) {
 
 function normalizeConfig(raw) {
   const listen = raw.listen ?? {};
-  const bots = raw.bots ?? {};
+  const agents = raw.agents ?? {};
   const apps = raw.apps ?? {};
 
-  if (!bots || typeof bots !== 'object') {
-    throw new Error('[namche-api-proxy] Config must define bots object');
+  if (!agents || typeof agents !== 'object') {
+    throw new Error('[namche-api-proxy] Config must define agents object');
   }
 
   if (!apps || typeof apps !== 'object') {
     throw new Error('[namche-api-proxy] Config must define apps object');
   }
 
-  const normalizedBots = {};
-  for (const [botId, bot] of Object.entries(bots)) {
-    if (!bot || typeof bot !== 'object') {
-      throw new Error(`[namche-api-proxy] Invalid bot config for '${botId}'`);
+  const normalizedAgents = {};
+  for (const [agentId, agent] of Object.entries(agents)) {
+    if (!agent || typeof agent !== 'object') {
+      throw new Error(`[namche-api-proxy] Invalid agent config for '${agentId}'`);
     }
 
-    const url = String(bot.url ?? '').trim();
-    const openclawHooksToken = String(bot.openclawHooksToken ?? '').trim();
+    const url = String(agent.url ?? '').trim();
+    const openclawHooksToken = String(agent.openclawHooksToken ?? '').trim();
 
     if (!url) {
-      throw new Error(`[namche-api-proxy] Bot '${botId}' missing url`);
+      throw new Error(`[namche-api-proxy] Agent '${agentId}' missing url`);
     }
 
     if (!openclawHooksToken) {
-      throw new Error(`[namche-api-proxy] Bot '${botId}' missing openclawHooksToken`);
+      throw new Error(`[namche-api-proxy] Agent '${agentId}' missing openclawHooksToken`);
     }
 
-    normalizedBots[botId] = {
+    normalizedAgents[agentId] = {
       url,
       openclawHooksToken,
     };
@@ -143,24 +143,24 @@ function normalizeConfig(raw) {
     }
 
     const incomingAuthorization = String(appConfig.incomingAuthorization ?? '').trim();
-    const targetBot = String(appConfig.targetBot ?? '').trim();
+    const targetAgent = String(appConfig.targetAgent ?? '').trim();
 
     if (!incomingAuthorization) {
       throw new Error(`[namche-api-proxy] App '${appId}' missing incomingAuthorization`);
     }
 
-    if (!targetBot) {
-      throw new Error(`[namche-api-proxy] App '${appId}' missing targetBot`);
+    if (!targetAgent) {
+      throw new Error(`[namche-api-proxy] App '${appId}' missing targetAgent`);
     }
 
-    if (!normalizedBots[targetBot]) {
-      throw new Error(`[namche-api-proxy] App '${appId}' references unknown bot '${targetBot}'`);
+    if (!normalizedAgents[targetAgent]) {
+      throw new Error(`[namche-api-proxy] App '${appId}' references unknown agent '${targetAgent}'`);
     }
 
     normalizedApps[appId] = {
       ...appDef,
       incomingAuthorization,
-      targetBot,
+      targetAgent,
     };
   }
 
@@ -170,7 +170,7 @@ function normalizeConfig(raw) {
       port: Number(listen.port ?? 3000),
     },
     logLevel: String(raw.logLevel ?? 'info').toLowerCase(),
-    bots: normalizedBots,
+    agents: normalizedAgents,
     apps: normalizedApps,
   };
 }
@@ -224,7 +224,7 @@ function authorizationMatches(provided, expected) {
 async function handleKrispWebhook(c) {
   const path = new URL(c.req.url).pathname;
   const appConfig = config.apps.krisp;
-  const botConfig = config.bots[appConfig.targetBot];
+  const agentConfig = config.agents[appConfig.targetAgent];
 
   const providedAuth = c.req.header('authorization');
   if (!authorizationMatches(providedAuth, appConfig.incomingAuthorization)) {
@@ -251,7 +251,7 @@ async function handleKrispWebhook(c) {
   const timeout = setTimeout(() => controller.abort(), FORWARD_TIMEOUT_MS);
 
   try {
-    const url = buildHooksUrl(botConfig.url);
+    const url = buildHooksUrl(agentConfig.url);
     const payload = JSON.stringify({
       name: APP_DEFINITIONS.krisp.payloadName,
       message,
@@ -260,13 +260,13 @@ async function handleKrispWebhook(c) {
     });
 
     if (shouldLog('debug')) {
-      log('debug', `[namche-api-proxy] forward_payload app=krisp bot=${appConfig.targetBot} url=${url} body=${payload}`);
+      log('debug', `[namche-api-proxy] forward_payload app=krisp agent=${appConfig.targetAgent} url=${url} body=${payload}`);
     }
 
     const upstream = await fetch(url, {
       method: 'POST',
       headers: {
-        authorization: botConfig.openclawHooksToken,
+        authorization: agentConfig.openclawHooksToken,
         'content-type': 'application/json',
         'x-namche-proxy': 'namche-api-proxy',
       },
@@ -282,12 +282,12 @@ async function handleKrispWebhook(c) {
       responseHeaders.set('content-type', contentType);
     }
 
-    log('info', `[namche-api-proxy] app=krisp bot=${appConfig.targetBot} status=${upstream.status} bytes=${body.byteLength}`);
+    log('info', `[namche-api-proxy] app=krisp agent=${appConfig.targetAgent} status=${upstream.status} bytes=${body.byteLength}`);
     return new Response(responseBody, { status: upstream.status, headers: responseHeaders });
   } catch (error) {
     const code = error?.name === 'AbortError' ? 504 : 502;
     const messageText = error instanceof Error ? error.message : 'forward request failed';
-    log('error', `[namche-api-proxy] app=krisp bot=${appConfig.targetBot} error=${messageText}`);
+    log('error', `[namche-api-proxy] app=krisp agent=${appConfig.targetAgent} error=${messageText}`);
     return c.json({ ok: false, error: messageText }, code);
   } finally {
     clearTimeout(timeout);
