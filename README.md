@@ -6,7 +6,7 @@ Hono service for `api.namche.ai`.
 
 - receive external webhooks
 - validate app-specific incoming auth
-- forward to OpenClaw bots over Tailscale HTTPS
+- forward to OpenClaw agents over Tailscale HTTPS
 
 ## Current Endpoint
 
@@ -23,16 +23,16 @@ Current config shape:
 
 - `listen` (`host`, `port`)
 - `logLevel` (`error`, `warn`, `info`, `debug`)
-- `bots`:
+- `agents`:
   - keyed by shortname (for example `tashi`)
-  - each bot defines:
+  - each agent defines:
     - `url`
     - `openclawHooksToken`
 - `apps`:
   - currently `krisp`
   - defines:
     - `incomingAuthorization` (full Authorization header value)
-    - `targetBot` (bot shortname)
+    - `targetAgent` (agent shortname)
 
 See:
 
@@ -46,8 +46,8 @@ Incoming check:
 
 Forwarded request:
 
-- `POST <bots.<targetBot>.url>/hooks/agent`
-- `Authorization: <bots.<targetBot>.openclawHooksToken>`
+- `POST <agents.<targetAgent>.url>/hooks/agent`
+- `Authorization: <agents.<targetAgent>.openclawHooksToken>`
 - `Content-Type: application/json`
 
 Forwarded payload:

@@ -4,7 +4,7 @@ listen:
 
 logLevel: info
 
-bots:
+agents:
   tashi:
     url: https://tashi.silverside-mermaid.ts.net
     openclawHooksToken: Bearer <OPENCLAW_HOOKS_TOKEN_TASHI>
@@ -12,4 +12,4 @@ bots:
 apps:
   krisp:
     incomingAuthorization: Bearer <KRISP_AUTHORIZATION>
-    targetBot: tashi
+    targetAgent: tashi
