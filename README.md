@@ -24,6 +24,7 @@ Current config shape:
 
 - `listen` (`host`, `port`)
 - `logLevel` (`error`, `warn`, `info`, `debug`)
+- `WEBFORM_ALLOWED_ORIGINS` (array of allowed browser origins for `/v1/webhooks/agents/*`)
 - `agents`:
   - keyed by shortname (for example `tashi`)
   - each agent defines:
@@ -71,7 +72,7 @@ Expected upstream response:
 Incoming endpoint:
 
 - `POST /v1/webhooks/agents/:agentId/complaint`
-- browser CORS origin allowlist currently includes `https://tashi.namche.ai`
+- browser CORS origin allowlist comes from `WEBFORM_ALLOWED_ORIGINS`
 
 Forwarded payload:
 

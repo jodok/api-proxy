@@ -3,6 +3,8 @@ listen:
   port: 3000
 
 logLevel: info
+WEBFORM_ALLOWED_ORIGINS:
+  - https://tashi.namche.ai
 
 agents:
   tashi:
