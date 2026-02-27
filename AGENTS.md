@@ -53,6 +53,7 @@ Do not deploy app source into nginx web root (`/var/www/html`).
 
 Hardwired app handlers in code (currently `krisp`) use YAML config for wiring and credentials:
 
+- `WEBFORM_ALLOWED_ORIGINS`
 - `agents.<shortname>.url`
 - `agents.<shortname>.openclawHooksToken`
 - `apps.krisp.incomingAuthorization`

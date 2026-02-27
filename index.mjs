@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
+import { cors } from 'hono/cors';
 import yaml from 'js-yaml';
 
 const app = new Hono();
@@ -48,6 +49,13 @@ app.use('*', async (c, next) => {
   log('info', `[namche-api-proxy] request method=${c.req.method} path=${new URL(c.req.url).pathname} status=${c.res.status} duration_ms=${durationMs}`);
 });
 
+app.use('/v1/webhooks/agents/*', cors({
+  origin: config.webformAllowedOrigins,
+  allowMethods: ['POST', 'OPTIONS'],
+  allowHeaders: ['Content-Type'],
+  maxAge: 86400,
+}));
+
 app.get('/healthz', (c) => {
   const routes = [
     ...Object.values(APP_DEFINITIONS).map((def) => def.path),
@@ -61,6 +69,7 @@ app.get('/healthz', (c) => {
     logLevel: configuredLogLevel,
     apps: Object.keys(APP_DEFINITIONS),
     agents: Object.keys(config.agents),
+    webformAllowedOrigins: config.webformAllowedOrigins,
     routes,
   });
 });
@@ -114,6 +123,9 @@ function normalizeConfig(raw) {
   const listen = raw.listen ?? {};
   const agents = raw.agents ?? {};
   const apps = raw.apps ?? {};
+  const webformAllowedOrigins = Array.isArray(raw.WEBFORM_ALLOWED_ORIGINS)
+    ? raw.WEBFORM_ALLOWED_ORIGINS
+    : ['https://tashi.namche.ai'];
 
   if (!agents || typeof agents !== 'object') {
     throw new Error('[namche-api-proxy] Config must define agents object');
@@ -121,6 +133,14 @@ function normalizeConfig(raw) {
 
   if (!apps || typeof apps !== 'object') {
     throw new Error('[namche-api-proxy] Config must define apps object');
+  }
+
+  const normalizedWebformAllowedOrigins = webformAllowedOrigins
+    .map((origin) => String(origin ?? '').trim())
+    .filter(Boolean);
+
+  if (normalizedWebformAllowedOrigins.length === 0) {
+    throw new Error('[namche-api-proxy] WEBFORM_ALLOWED_ORIGINS must include at least one origin');
   }
 
   const normalizedAgents = {};
@@ -181,6 +201,7 @@ function normalizeConfig(raw) {
       port: Number(listen.port ?? 3000),
     },
     logLevel: String(raw.logLevel ?? 'info').toLowerCase(),
+    webformAllowedOrigins: normalizedWebformAllowedOrigins,
     agents: normalizedAgents,
     apps: normalizedApps,
   };
