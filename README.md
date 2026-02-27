@@ -114,11 +114,24 @@ apps:
 GCP Pub/Sub subscription — create with OIDC auth (no token in URL):
 
 ```bash
-gcloud pubsub subscriptions modify-push-config gog-gmail-watch-push \
+# 1. Create a dedicated service account for Pub/Sub push auth
+gcloud iam service-accounts create pubsub-push \
+  --display-name="Pub/Sub push auth" \
+  --project=<PROJECT_ID>
+
+# 2. Grant it permission to publish to the topic (so GCP accepts the OIDC token)
+gcloud pubsub topics add-iam-policy-binding <TOPIC> \
+  --member="serviceAccount:pubsub-push@<PROJECT_ID>.iam.gserviceaccount.com" \
+  --role="roles/pubsub.publisher"
+
+# 3. Update the push subscription with OIDC auth — clean URL, no token param
+gcloud pubsub subscriptions modify-push-config <SUBSCRIPTION> \
   --push-endpoint="https://api.namche.ai/v1/webhooks/agents/tashi/gmail" \
-  --push-auth-service-account=<SERVICE_ACCOUNT>@<PROJECT>.iam.gserviceaccount.com \
+  --push-auth-service-account="pubsub-push@<PROJECT_ID>.iam.gserviceaccount.com" \
   --push-auth-token-format=oidc_token
 ```
+
+Set `oidcEmail` in config to `pubsub-push@<PROJECT_ID>.iam.gserviceaccount.com`.
 
 ## Local Run
 
