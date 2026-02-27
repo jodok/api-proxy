@@ -23,6 +23,6 @@ apps:
 
   # gmail is optional — omit to disable the route
   gmail:
-    incomingToken: <PUBSUB_PUSH_TOKEN>   # token GCP puts in ?token= on the push URL
+    oidcEmail: <SERVICE_ACCOUNT>@<PROJECT>.iam.gserviceaccount.com  # expected GCP SA in OIDC JWT
     targetAgent: tashi
     forwardUrl: https://tashi.silverside-mermaid.ts.net/gmail-pubsub?token=<GOG_SERVE_TOKEN>

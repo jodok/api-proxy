@@ -94,7 +94,7 @@ Optional route — only active if `apps.gmail` is present in config.
 Incoming endpoint:
 
 - `POST /v1/webhooks/agents/:agentId/gmail`
-- auth: `?token=<incomingToken>` query param or `x-gog-token` header
+- auth: GCP Pub/Sub OIDC JWT (`Authorization: Bearer <jwt>`) — verified against Google's public keys
 
 Forwarded request:
 
@@ -106,15 +106,18 @@ Config:
 ```yaml
 apps:
   gmail:
-    incomingToken: <PUBSUB_PUSH_TOKEN>
+    oidcEmail: <SERVICE_ACCOUNT>@<PROJECT>.iam.gserviceaccount.com
     targetAgent: tashi
     forwardUrl: https://<tashi-tailscale-host>/gmail-pubsub?token=<GOG_SERVE_TOKEN>
 ```
 
-GCP Pub/Sub subscription push endpoint:
+GCP Pub/Sub subscription — create with OIDC auth (no token in URL):
 
-```
-https://api.namche.ai/v1/webhooks/agents/tashi/gmail?token=<PUBSUB_PUSH_TOKEN>
+```bash
+gcloud pubsub subscriptions modify-push-config gog-gmail-watch-push \
+  --push-endpoint="https://api.namche.ai/v1/webhooks/agents/tashi/gmail" \
+  --push-auth-service-account=<SERVICE_ACCOUNT>@<PROJECT>.iam.gserviceaccount.com \
+  --push-auth-token-format=oidc_token
 ```
 
 ## Local Run

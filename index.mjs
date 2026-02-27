@@ -4,6 +4,9 @@ import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import yaml from 'js-yaml';
+import { createRemoteJWKSet, jwtVerify } from 'jose';
+
+const GOOGLE_JWKS = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
 
 const app = new Hono();
 
@@ -180,25 +183,25 @@ function normalizeConfig(raw) {
   for (const [appId, appDef] of Object.entries(APP_DEFINITIONS)) {
     const appConfig = apps[appId];
 
-    // gmail is optional — only validate if present in config
+    // gmail is optional — only active when present in config
     if (appId === 'gmail') {
       if (!appConfig) continue;
       if (typeof appConfig !== 'object') {
         throw new Error(`[namche-api-proxy] App 'gmail' config must be an object`);
       }
 
-      const incomingToken = String(appConfig.incomingToken ?? '').trim();
+      const oidcEmail = String(appConfig.oidcEmail ?? '').trim();
       const targetAgent = String(appConfig.targetAgent ?? '').trim();
       const forwardUrl = String(appConfig.forwardUrl ?? '').trim();
 
-      if (!incomingToken) throw new Error(`[namche-api-proxy] App 'gmail' missing incomingToken`);
+      if (!oidcEmail) throw new Error(`[namche-api-proxy] App 'gmail' missing oidcEmail`);
       if (!targetAgent) throw new Error(`[namche-api-proxy] App 'gmail' missing targetAgent`);
       if (!forwardUrl) throw new Error(`[namche-api-proxy] App 'gmail' missing forwardUrl`);
       if (!normalizedAgents[targetAgent]) {
         throw new Error(`[namche-api-proxy] App 'gmail' references unknown agent '${targetAgent}'`);
       }
 
-      normalizedApps.gmail = { ...appDef, incomingToken, targetAgent, forwardUrl };
+      normalizedApps.gmail = { ...appDef, oidcEmail, targetAgent, forwardUrl };
       continue;
     }
 
@@ -405,11 +408,26 @@ async function handleGmailWebhook(c) {
     return c.json({ ok: false, error: 'unknown_agent' }, 404);
   }
 
-  // Accept token from ?token= query param or x-gog-token header (gog sends both)
-  const url = new URL(c.req.url);
-  const providedToken = url.searchParams.get('token') ?? c.req.header('x-gog-token') ?? '';
-  if (!providedToken || providedToken !== appConfig.incomingToken) {
-    log('warn', `[namche-api-proxy] unauthorized app=gmail agent=${agentId} path=${path}`);
+  // Verify GCP Pub/Sub OIDC JWT (sent in Authorization: Bearer header)
+  const authHeader = c.req.header('authorization') ?? '';
+  const jwt = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+  if (!jwt) {
+    log('warn', `[namche-api-proxy] unauthorized app=gmail agent=${agentId} reason=missing_jwt`);
+    return c.json({ ok: false, error: 'unauthorized' }, 401);
+  }
+
+  try {
+    const audience = `https://api.namche.ai/v1/webhooks/agents/${agentId}/gmail`;
+    const { payload } = await jwtVerify(jwt, GOOGLE_JWKS, {
+      issuer: 'https://accounts.google.com',
+      audience,
+    });
+    if (payload.email !== appConfig.oidcEmail) {
+      log('warn', `[namche-api-proxy] unauthorized app=gmail agent=${agentId} reason=email_mismatch got=${payload.email}`);
+      return c.json({ ok: false, error: 'unauthorized' }, 401);
+    }
+  } catch (err) {
+    log('warn', `[namche-api-proxy] unauthorized app=gmail agent=${agentId} reason=jwt_invalid err=${err?.message}`);
     return c.json({ ok: false, error: 'unauthorized' }, 401);
   }
 
