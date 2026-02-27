@@ -49,6 +49,11 @@ app.use('*', async (c, next) => {
 });
 
 app.get('/healthz', (c) => {
+  const routes = [
+    ...Object.values(APP_DEFINITIONS).map((def) => def.path),
+    '/v1/webhooks/agents/:agentId/complaint',
+  ];
+
   return c.json({
     ok: true,
     service: 'namche-api-proxy',
@@ -56,11 +61,12 @@ app.get('/healthz', (c) => {
     logLevel: configuredLogLevel,
     apps: Object.keys(APP_DEFINITIONS),
     agents: Object.keys(config.agents),
-    routes: Object.values(APP_DEFINITIONS).map((def) => def.path),
+    routes,
   });
 });
 
 app.post(APP_DEFINITIONS.krisp.path, handleKrispWebhook);
+app.post('/v1/webhooks/agents/:agentId/complaint', handleAgentComplaintWebhook);
 
 app.post('/v1/webhooks/apps/*', (c) => {
   log('warn', `[namche-api-proxy] invalid_path family=apps path=${new URL(c.req.url).pathname}`);
@@ -73,10 +79,15 @@ app.post('/v1/webhooks/agents/*', (c) => {
 });
 
 app.all('*', (c) => {
+  const usage = [
+    ...Object.values(APP_DEFINITIONS).map((def) => `POST ${def.path}`),
+    'POST /v1/webhooks/agents/:agentId/complaint',
+  ];
+
   return c.json({
     ok: false,
     error: 'not_found',
-    usage: Object.values(APP_DEFINITIONS).map((def) => `POST ${def.path}`),
+    usage,
   }, 404);
 });
 
@@ -251,7 +262,6 @@ async function handleKrispWebhook(c) {
   const timeout = setTimeout(() => controller.abort(), FORWARD_TIMEOUT_MS);
 
   try {
-    const url = buildHooksUrl(agentConfig.url);
     const payload = JSON.stringify({
       name: APP_DEFINITIONS.krisp.payloadName,
       message,
@@ -260,30 +270,13 @@ async function handleKrispWebhook(c) {
     });
 
     if (shouldLog('debug')) {
-      log('debug', `[namche-api-proxy] forward_payload app=krisp agent=${appConfig.targetAgent} url=${url} body=${payload}`);
+      log('debug', `[namche-api-proxy] forward_payload app=krisp agent=${appConfig.targetAgent} body=${payload}`);
     }
 
-    const upstream = await fetch(url, {
-      method: 'POST',
-      headers: {
-        authorization: agentConfig.openclawHooksToken,
-        'content-type': 'application/json',
-        'x-namche-proxy': 'namche-api-proxy',
-      },
-      body: payload,
-      signal: controller.signal,
-    });
-
-    const responseBody = await upstream.arrayBuffer();
-    const responseHeaders = new Headers();
-    const contentType = upstream.headers.get('content-type');
-
-    if (contentType) {
-      responseHeaders.set('content-type', contentType);
-    }
+    const upstream = await forwardToAgent(agentConfig, payload, controller.signal);
 
     log('info', `[namche-api-proxy] app=krisp agent=${appConfig.targetAgent} status=${upstream.status} bytes=${body.byteLength}`);
-    return new Response(responseBody, { status: upstream.status, headers: responseHeaders });
+    return upstream;
   } catch (error) {
     const code = error?.name === 'AbortError' ? 504 : 502;
     const messageText = error instanceof Error ? error.message : 'forward request failed';
@@ -292,4 +285,73 @@ async function handleKrispWebhook(c) {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+async function handleAgentComplaintWebhook(c) {
+  const path = new URL(c.req.url).pathname;
+  const agentId = String(c.req.param('agentId') ?? '').trim();
+  const agentConfig = config.agents[agentId];
+
+  if (!agentConfig) {
+    log('warn', `[namche-api-proxy] unknown_agent path=${path} agent=${agentId || 'none'}`);
+    return c.json({ ok: false, error: 'unknown_agent' }, 404);
+  }
+
+  const body = await c.req.arrayBuffer();
+  const message = Buffer.from(body).toString('utf8');
+
+  if (shouldLog('debug')) {
+    log('debug', `[namche-api-proxy] incoming_payload app=webform-complaint agent=${agentId} bytes=${body.byteLength} body=${message}`);
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FORWARD_TIMEOUT_MS);
+
+  try {
+    const payload = JSON.stringify({
+      name: 'complaint:webform',
+      message,
+      deliver: true,
+      wakeMode: 'now',
+    });
+
+    if (shouldLog('debug')) {
+      log('debug', `[namche-api-proxy] forward_payload app=webform-complaint agent=${agentId} body=${payload}`);
+    }
+
+    const upstream = await forwardToAgent(agentConfig, payload, controller.signal);
+    log('info', `[namche-api-proxy] app=webform-complaint agent=${agentId} status=${upstream.status} bytes=${body.byteLength}`);
+    return upstream;
+  } catch (error) {
+    const code = error?.name === 'AbortError' ? 504 : 502;
+    const messageText = error instanceof Error ? error.message : 'forward request failed';
+    log('error', `[namche-api-proxy] app=webform-complaint agent=${agentId} error=${messageText}`);
+    return c.json({ ok: false, error: messageText }, code);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function forwardToAgent(agentConfig, payload, signal) {
+  const url = buildHooksUrl(agentConfig.url);
+  const upstream = await fetch(url, {
+    method: 'POST',
+    headers: {
+      authorization: agentConfig.openclawHooksToken,
+      'content-type': 'application/json',
+      'x-namche-proxy': 'namche-api-proxy',
+    },
+    body: payload,
+    signal,
+  });
+
+  const responseBody = await upstream.arrayBuffer();
+  const responseHeaders = new Headers();
+  const contentType = upstream.headers.get('content-type');
+
+  if (contentType) {
+    responseHeaders.set('content-type', contentType);
+  }
+
+  return new Response(responseBody, { status: upstream.status, headers: responseHeaders });
 }
