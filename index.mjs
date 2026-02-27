@@ -13,7 +13,7 @@ const FORWARD_TIMEOUT_MS = 15000;
 const APP_DEFINITIONS = {
   krisp: {
     path: '/v1/webhooks/apps/krisp',
-    payloadName: 'notetaker:krisp',
+    payloadName: 'krisp',
   },
 };
 
@@ -243,6 +243,14 @@ async function handleKrispWebhook(c) {
   const body = await c.req.arrayBuffer();
   const message = Buffer.from(body).toString('utf8');
 
+  // Derive event name: krisp:<event_type> from payload, fallback to 'krisp'
+  let hookName = APP_DEFINITIONS.krisp.payloadName;
+  try {
+    const parsed = JSON.parse(message);
+    const eventType = parsed?.event?.type || parsed?.type;
+    if (eventType) hookName = `krisp:${eventType}`;
+  } catch (_) {}
+
   if (shouldLog('debug')) {
     log('debug', `[namche-api-proxy] incoming_payload app=krisp bytes=${body.byteLength} body=${message}`);
   }
@@ -253,7 +261,7 @@ async function handleKrispWebhook(c) {
   try {
     const url = buildHooksUrl(agentConfig.url);
     const payload = JSON.stringify({
-      name: APP_DEFINITIONS.krisp.payloadName,
+      name: hookName,
       message,
       deliver: true,
       wakeMode: 'now',
