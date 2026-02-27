@@ -19,8 +19,8 @@ const APP_DEFINITIONS = {
   },
   complaint: {
     path: '/v1/webhooks/agents/:agentId/complaint',
-    payloadName: 'complaint:webform',
-    sessionKey: 'hook:complaint:webform',
+    payloadName: 'webform:complaint',
+    sessionKey: 'hook:webform:complaint',
   },
 };
 
