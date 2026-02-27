@@ -11,6 +11,7 @@ Hono service for `api.namche.ai`.
 ## Current Endpoint
 
 - `POST /v1/webhooks/apps/krisp`
+- `POST /v1/webhooks/agents/:agentId/complaint`
 
 ## Configuration
 
@@ -64,6 +65,23 @@ Forwarded payload:
 Expected upstream response:
 
 - `202 { "status": "ok" }`
+
+## Webform Complaint Forwarding
+
+Incoming endpoint:
+
+- `POST /v1/webhooks/agents/:agentId/complaint`
+
+Forwarded payload:
+
+```json
+{
+  "name": "complaint:webform",
+  "message": "<raw body string>",
+  "deliver": true,
+  "wakeMode": "now"
+}
+```
 
 ## Local Run
 
