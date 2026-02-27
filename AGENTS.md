@@ -3,7 +3,11 @@
 ## Project
 
 Webhook relay service for Namche.
-Current production flow accepts Krisp webhooks and forwards them to OpenClaw on Tashi.
+Accepts webhooks from external apps and forwards them to OpenClaw on Tashi.
+
+Current endpoints:
+- `POST /v1/webhooks/apps/krisp` — Krisp notetaker summaries
+- `POST /v1/webhooks/apps/complaint` — Complaint webform submissions (JSON body: `email` required, `name` optional, `complaint` required, `context` optional)
 
 Built with Hono + Node.js (ESM JavaScript).
 
@@ -51,12 +55,12 @@ Do not deploy app source into nginx web root (`/var/www/html`).
 
 ## Configuration Model
 
-Hardwired app handlers in code (currently `krisp`) use YAML config for wiring and credentials:
+Hardwired app handlers in code (currently `krisp`, `complaint`) use YAML config for wiring and credentials:
 
 - `agents.<shortname>.url`
 - `agents.<shortname>.openclawHooksToken`
-- `apps.krisp.incomingAuthorization`
-- `apps.krisp.targetAgent`
+- `apps.<appname>.incomingAuthorization`
+- `apps.<appname>.targetAgent`
 
 No enable/disable flags and no timeout config knobs.
 

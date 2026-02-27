@@ -13,3 +13,6 @@ apps:
   krisp:
     incomingAuthorization: Bearer <KRISP_AUTHORIZATION>
     targetAgent: tashi
+  complaint:
+    targetAgent: main
+    incomingAuthorization: "Bearer YOUR_COMPLAINT_TOKEN"

@@ -15,6 +15,10 @@ const APP_DEFINITIONS = {
     path: '/v1/webhooks/apps/krisp',
     payloadName: 'notetaker:krisp',
   },
+  complaint: {
+    path: '/v1/webhooks/apps/complaint',
+    payloadName: 'complaint:webform',
+  },
 };
 
 const rawConfig = loadConfig(configPath);
@@ -61,6 +65,7 @@ app.get('/healthz', (c) => {
 });
 
 app.post(APP_DEFINITIONS.krisp.path, handleKrispWebhook);
+app.post(APP_DEFINITIONS.complaint.path, handleComplaintWebhook);
 
 app.post('/v1/webhooks/apps/*', (c) => {
   log('warn', `[namche-api-proxy] invalid_path family=apps path=${new URL(c.req.url).pathname}`);
@@ -219,6 +224,98 @@ function authorizationMatches(provided, expected) {
   }
 
   return providedToken === expectedToken;
+}
+
+async function handleComplaintWebhook(c) {
+  const path = new URL(c.req.url).pathname;
+  const appConfig = config.apps.complaint;
+  const agentConfig = config.agents[appConfig.targetAgent];
+
+  const providedAuth = c.req.header('authorization');
+  if (!authorizationMatches(providedAuth, appConfig.incomingAuthorization)) {
+    if (shouldLog('debug')) {
+      const providedScheme = getAuthScheme(providedAuth);
+      const expectedScheme = getAuthScheme(appConfig.incomingAuthorization);
+      const providedLen = providedAuth ? providedAuth.trim().length : 0;
+      const expectedLen = appConfig.incomingAuthorization.trim().length;
+      log('debug', `[namche-api-proxy] auth_mismatch app=complaint provided_scheme=${providedScheme} expected_scheme=${expectedScheme} provided_len=${providedLen} expected_len=${expectedLen}`);
+    }
+
+    log('warn', `[namche-api-proxy] unauthorized app=complaint reason=authorization path=${path}`);
+    return c.json({ ok: false, error: 'unauthorized' }, 401);
+  }
+
+  let body;
+  try {
+    body = await c.req.json();
+  } catch {
+    log('warn', `[namche-api-proxy] invalid_json app=complaint path=${path}`);
+    return c.json({ ok: false, error: 'invalid_json' }, 400);
+  }
+
+  const { name, email, context, complaint } = body ?? {};
+
+  if (!email || !complaint) {
+    log('warn', `[namche-api-proxy] missing_fields app=complaint path=${path} missing=${!email ? 'email' : 'complaint'}`);
+    return c.json({ ok: false, error: 'missing_fields', required: ['email', 'complaint'] }, 400);
+  }
+
+  const fromLine = `From: ${name ? name : 'anonymous'} (${email})`;
+  const lines = ['complaint:webform', fromLine];
+  if (context) lines.push(context);
+  lines.push('');
+  lines.push(complaint);
+  const message = lines.join('\n');
+
+  if (shouldLog('debug')) {
+    log('debug', `[namche-api-proxy] incoming_payload app=complaint message=${message}`);
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FORWARD_TIMEOUT_MS);
+
+  try {
+    const url = buildHooksUrl(agentConfig.url);
+    const payload = JSON.stringify({
+      name: APP_DEFINITIONS.complaint.payloadName,
+      message,
+      deliver: true,
+      wakeMode: 'now',
+    });
+
+    if (shouldLog('debug')) {
+      log('debug', `[namche-api-proxy] forward_payload app=complaint agent=${appConfig.targetAgent} url=${url} body=${payload}`);
+    }
+
+    const upstream = await fetch(url, {
+      method: 'POST',
+      headers: {
+        authorization: agentConfig.openclawHooksToken,
+        'content-type': 'application/json',
+        'x-namche-proxy': 'namche-api-proxy',
+      },
+      body: payload,
+      signal: controller.signal,
+    });
+
+    const responseBody = await upstream.arrayBuffer();
+    const responseHeaders = new Headers();
+    const contentType = upstream.headers.get('content-type');
+
+    if (contentType) {
+      responseHeaders.set('content-type', contentType);
+    }
+
+    log('info', `[namche-api-proxy] app=complaint agent=${appConfig.targetAgent} status=${upstream.status}`);
+    return new Response(responseBody, { status: upstream.status, headers: responseHeaders });
+  } catch (error) {
+    const code = error?.name === 'AbortError' ? 504 : 502;
+    const messageText = error instanceof Error ? error.message : 'forward request failed';
+    log('error', `[namche-api-proxy] app=complaint agent=${appConfig.targetAgent} error=${messageText}`);
+    return c.json({ ok: false, error: messageText }, code);
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function handleKrispWebhook(c) {
