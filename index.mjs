@@ -334,6 +334,7 @@ async function handleAgentComplaintWebhook(c) {
       message,
       deliver: true,
       wakeMode: 'now',
+      agentId: 'main',
     });
 
     if (shouldLog('debug')) {
