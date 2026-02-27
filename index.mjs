@@ -22,6 +22,9 @@ const APP_DEFINITIONS = {
     payloadName: 'webform:complaint',
     sessionKey: 'hook:webform:complaint',
   },
+  gmail: {
+    path: '/v1/webhooks/agents/:agentId/gmail',
+  },
 };
 
 const rawConfig = loadConfig(configPath);
@@ -82,6 +85,7 @@ app.get('/healthz', (c) => {
 
 app.post(APP_DEFINITIONS.krisp.path, handleKrispWebhook);
 app.post('/v1/webhooks/agents/:agentId/complaint', handleAgentComplaintWebhook);
+app.post('/v1/webhooks/agents/:agentId/gmail', handleGmailWebhook);
 
 app.post('/v1/webhooks/apps/*', (c) => {
   log('warn', `[namche-api-proxy] invalid_path family=apps path=${new URL(c.req.url).pathname}`);
@@ -175,6 +179,29 @@ function normalizeConfig(raw) {
   const normalizedApps = {};
   for (const [appId, appDef] of Object.entries(APP_DEFINITIONS)) {
     const appConfig = apps[appId];
+
+    // gmail is optional — only validate if present in config
+    if (appId === 'gmail') {
+      if (!appConfig) continue;
+      if (typeof appConfig !== 'object') {
+        throw new Error(`[namche-api-proxy] App 'gmail' config must be an object`);
+      }
+
+      const incomingToken = String(appConfig.incomingToken ?? '').trim();
+      const targetAgent = String(appConfig.targetAgent ?? '').trim();
+      const forwardUrl = String(appConfig.forwardUrl ?? '').trim();
+
+      if (!incomingToken) throw new Error(`[namche-api-proxy] App 'gmail' missing incomingToken`);
+      if (!targetAgent) throw new Error(`[namche-api-proxy] App 'gmail' missing targetAgent`);
+      if (!forwardUrl) throw new Error(`[namche-api-proxy] App 'gmail' missing forwardUrl`);
+      if (!normalizedAgents[targetAgent]) {
+        throw new Error(`[namche-api-proxy] App 'gmail' references unknown agent '${targetAgent}'`);
+      }
+
+      normalizedApps.gmail = { ...appDef, incomingToken, targetAgent, forwardUrl };
+      continue;
+    }
+
     if (!appConfig || typeof appConfig !== 'object') {
       throw new Error(`[namche-api-proxy] App '${appId}' config is required`);
     }
@@ -357,6 +384,62 @@ async function handleAgentComplaintWebhook(c) {
     const code = error?.name === 'AbortError' ? 504 : 502;
     const messageText = error instanceof Error ? error.message : 'forward request failed';
     log('error', `[namche-api-proxy] app=webform-complaint agent=${agentId} error=${messageText}`);
+    return c.json({ ok: false, error: messageText }, code);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function handleGmailWebhook(c) {
+  const path = new URL(c.req.url).pathname;
+  const agentId = String(c.req.param('agentId') ?? '').trim();
+  const appConfig = config.apps.gmail;
+
+  if (!appConfig) {
+    log('warn', `[namche-api-proxy] gmail_not_configured path=${path}`);
+    return c.json({ ok: false, error: 'not_configured' }, 404);
+  }
+
+  if (agentId !== appConfig.targetAgent) {
+    log('warn', `[namche-api-proxy] unknown_agent path=${path} agent=${agentId || 'none'}`);
+    return c.json({ ok: false, error: 'unknown_agent' }, 404);
+  }
+
+  // Accept token from ?token= query param or x-gog-token header (gog sends both)
+  const url = new URL(c.req.url);
+  const providedToken = url.searchParams.get('token') ?? c.req.header('x-gog-token') ?? '';
+  if (!providedToken || providedToken !== appConfig.incomingToken) {
+    log('warn', `[namche-api-proxy] unauthorized app=gmail agent=${agentId} path=${path}`);
+    return c.json({ ok: false, error: 'unauthorized' }, 401);
+  }
+
+  const body = await c.req.arrayBuffer();
+
+  if (shouldLog('debug')) {
+    log('debug', `[namche-api-proxy] incoming_payload app=gmail agent=${agentId} bytes=${body.byteLength}`);
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FORWARD_TIMEOUT_MS);
+
+  try {
+    const upstream = await fetch(appConfig.forwardUrl, {
+      method: 'POST',
+      headers: {
+        'content-type': c.req.header('content-type') ?? 'application/json',
+        'x-namche-proxy': 'namche-api-proxy',
+      },
+      body,
+      signal: controller.signal,
+    });
+
+    const responseBody = await upstream.arrayBuffer();
+    log('info', `[namche-api-proxy] app=gmail agent=${agentId} status=${upstream.status} bytes=${body.byteLength}`);
+    return new Response(responseBody, { status: upstream.status });
+  } catch (error) {
+    const code = error?.name === 'AbortError' ? 504 : 502;
+    const messageText = error instanceof Error ? error.message : 'forward request failed';
+    log('error', `[namche-api-proxy] app=gmail agent=${agentId} error=${messageText}`);
     return c.json({ ok: false, error: messageText }, code);
   } finally {
     clearTimeout(timeout);

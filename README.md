@@ -8,10 +8,11 @@ Hono service for `api.namche.ai`.
 - validate app-specific incoming auth
 - forward to OpenClaw agents over Tailscale HTTPS
 
-## Current Endpoint
+## Current Endpoints
 
 - `POST /v1/webhooks/apps/krisp`
 - `POST /v1/webhooks/agents/:agentId/complaint`
+- `POST /v1/webhooks/agents/:agentId/gmail` (optional, Gmail Pub/Sub push)
 
 ## Configuration
 
@@ -84,6 +85,36 @@ Forwarded payload:
   "wakeMode": "now",
   "agentId": "main"
 }
+```
+
+## Gmail Pub/Sub Forwarding
+
+Optional route — only active if `apps.gmail` is present in config.
+
+Incoming endpoint:
+
+- `POST /v1/webhooks/agents/:agentId/gmail`
+- auth: `?token=<incomingToken>` query param or `x-gog-token` header
+
+Forwarded request:
+
+- `POST <apps.gmail.forwardUrl>` (raw Pub/Sub body, pass-through)
+- target is `gog gmail watch serve` on the agent host
+
+Config:
+
+```yaml
+apps:
+  gmail:
+    incomingToken: <PUBSUB_PUSH_TOKEN>
+    targetAgent: tashi
+    forwardUrl: https://<tashi-tailscale-host>/gmail-pubsub?token=<GOG_SERVE_TOKEN>
+```
+
+GCP Pub/Sub subscription push endpoint:
+
+```
+https://api.namche.ai/v1/webhooks/agents/tashi/gmail?token=<PUBSUB_PUSH_TOKEN>
 ```
 
 ## Local Run

@@ -20,3 +20,9 @@ apps:
     # sessionKey: hook:notetaker:krisp — routes into the Krisp notetaker hook session
     # wakeMode: next-heartbeat   — processed at the next heartbeat, not urgently
     # deliver: false             — queued silently; no immediate notification pushed
+
+  # gmail is optional — omit to disable the route
+  gmail:
+    incomingToken: <PUBSUB_PUSH_TOKEN>   # token GCP puts in ?token= on the push URL
+    targetAgent: tashi
+    forwardUrl: https://tashi.silverside-mermaid.ts.net/gmail-pubsub?token=<GOG_SERVE_TOKEN>
