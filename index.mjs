@@ -15,6 +15,12 @@ const APP_DEFINITIONS = {
   krisp: {
     path: '/v1/webhooks/apps/krisp',
     payloadName: 'notetaker:krisp',
+    sessionKey: 'hook:notetaker:krisp',
+  },
+  complaint: {
+    path: '/v1/webhooks/agents/:agentId/complaint',
+    payloadName: 'complaint:webform',
+    sessionKey: 'hook:complaint:webform',
   },
 };
 
@@ -286,8 +292,10 @@ async function handleKrispWebhook(c) {
     const payload = JSON.stringify({
       name: APP_DEFINITIONS.krisp.payloadName,
       message,
-      deliver: true,
-      wakeMode: 'now',
+      agentId: 'main',
+      sessionKey: APP_DEFINITIONS.krisp.sessionKey,
+      wakeMode: 'next-heartbeat',
+      deliver: false,
     });
 
     if (shouldLog('debug')) {
@@ -330,11 +338,12 @@ async function handleAgentComplaintWebhook(c) {
 
   try {
     const payload = JSON.stringify({
-      name: 'complaint:webform',
+      name: APP_DEFINITIONS.complaint.payloadName,
       message,
-      deliver: true,
-      wakeMode: 'now',
       agentId: 'main',
+      sessionKey: APP_DEFINITIONS.complaint.sessionKey,
+      wakeMode: 'now',
+      deliver: true,
     });
 
     if (shouldLog('debug')) {

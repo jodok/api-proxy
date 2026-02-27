@@ -51,7 +51,7 @@ Do not deploy app source into nginx web root (`/var/www/html`).
 
 ## Configuration Model
 
-Hardwired app handlers in code (currently `krisp`) use YAML config for wiring and credentials:
+Hardwired app handlers in code (currently `krisp`, `complaint`) use YAML config for wiring and credentials:
 
 - `WEBFORM_ALLOWED_ORIGINS`
 - `agents.<shortname>.url`
@@ -60,6 +60,30 @@ Hardwired app handlers in code (currently `krisp`) use YAML config for wiring an
 - `apps.krisp.targetAgent`
 
 No enable/disable flags and no timeout config knobs.
+
+## OpenClaw Hook Parameters
+
+Each app forwards to OpenClaw with a fixed set of hook parameters. These are defined in `APP_DEFINITIONS` in `index.mjs`:
+
+| Parameter | Description |
+|-----------|-------------|
+| `name` | Payload name identifying the hook type (e.g. `notetaker:krisp`) |
+| `agentId` | OpenClaw agent session to target (`main` for the primary agent) |
+| `sessionKey` | Routes the payload into a specific hook session within the agent |
+| `wakeMode` | When to wake the agent: `now` (immediately) or `next-heartbeat` (at next periodic check) |
+| `deliver` | Whether to push a notification to the agent (`true` = wake immediately, `false` = queue silently) |
+
+### Per-endpoint settings
+
+**krisp** (`POST /v1/webhooks/apps/krisp`):
+- `sessionKey: hook:notetaker:krisp` — notetaker hook session
+- `wakeMode: next-heartbeat` — processed at the next heartbeat, not urgently
+- `deliver: false` — queued silently, no immediate notification
+
+**complaint** (`POST /v1/webhooks/agents/:agentId/complaint`):
+- `sessionKey: hook:complaint:webform` — complaint webform hook session
+- `wakeMode: now` — agent woken immediately to handle the complaint
+- `deliver: true` — notification pushed so the agent acts right away
 
 ## Logging
 

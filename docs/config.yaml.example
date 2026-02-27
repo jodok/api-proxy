@@ -15,3 +15,8 @@ apps:
   krisp:
     incomingAuthorization: Bearer <KRISP_AUTHORIZATION>
     targetAgent: tashi
+    # OpenClaw hook parameters (hardwired in code, documented here for reference):
+    # agentId: main              — which OpenClaw agent session to target
+    # sessionKey: hook:notetaker:krisp — routes into the Krisp notetaker hook session
+    # wakeMode: next-heartbeat   — processed at the next heartbeat, not urgently
+    # deliver: false             — queued silently; no immediate notification pushed
