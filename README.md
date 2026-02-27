@@ -127,8 +127,8 @@ gcloud pubsub topics add-iam-policy-binding <TOPIC> \
 # 3. Update the push subscription with OIDC auth — clean URL, no token param
 gcloud pubsub subscriptions modify-push-config <SUBSCRIPTION> \
   --push-endpoint="https://api.namche.ai/v1/webhooks/agents/tashi/gmail" \
-  --push-auth-service-account="pubsub-push@<PROJECT_ID>.iam.gserviceaccount.com" \
-  --push-auth-token-format=oidc_token
+  --push-auth-service-account="pubsub-push@<PROJECT_ID>.iam.gserviceaccount.com"
+# audience defaults to the push endpoint URL — matches what the proxy verifies
 ```
 
 Set `oidcEmail` in config to `pubsub-push@<PROJECT_ID>.iam.gserviceaccount.com`.
