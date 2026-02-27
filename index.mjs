@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
+import { cors } from 'hono/cors';
 import yaml from 'js-yaml';
 
 const app = new Hono();
@@ -16,6 +17,8 @@ const APP_DEFINITIONS = {
     payloadName: 'notetaker:krisp',
   },
 };
+
+const WEBFORM_ALLOWED_ORIGINS = ['https://tashi.namche.ai'];
 
 const rawConfig = loadConfig(configPath);
 const config = normalizeConfig(rawConfig);
@@ -47,6 +50,13 @@ app.use('*', async (c, next) => {
   const durationMs = Date.now() - startedAt;
   log('info', `[namche-api-proxy] request method=${c.req.method} path=${new URL(c.req.url).pathname} status=${c.res.status} duration_ms=${durationMs}`);
 });
+
+app.use('/v1/webhooks/agents/*', cors({
+  origin: WEBFORM_ALLOWED_ORIGINS,
+  allowMethods: ['POST', 'OPTIONS'],
+  allowHeaders: ['Content-Type'],
+  maxAge: 86400,
+}));
 
 app.get('/healthz', (c) => {
   const routes = [

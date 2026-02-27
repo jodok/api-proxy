@@ -71,6 +71,7 @@ Expected upstream response:
 Incoming endpoint:
 
 - `POST /v1/webhooks/agents/:agentId/complaint`
+- browser CORS origin allowlist currently includes `https://tashi.namche.ai`
 
 Forwarded payload:
 
