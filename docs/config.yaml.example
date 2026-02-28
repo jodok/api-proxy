@@ -5,6 +5,7 @@ listen:
 logLevel: info
 WEBFORM_ALLOWED_ORIGINS:
   - https://tashi.namche.ai
+  # add any other origins that host webforms
 
 agents:
   tashi:
@@ -20,6 +21,13 @@ apps:
     # sessionKey: hook:notetaker:krisp — routes into the Krisp notetaker hook session
     # wakeMode: next-heartbeat   — processed at the next heartbeat, not urgently
     # deliver: false             — queued silently; no immediate notification pushed
+
+  # webforms: handled generically via POST /v1/webhooks/agents/:agentId/webform/:formId
+  # No config needed — any formId is accepted and forwarded as webform:<formId>
+  # The receiving agent's webform.md playbook routes by formId.
+  # Example URLs:
+  #   /v1/webhooks/agents/tashi/webform/complaint
+  #   /v1/webhooks/agents/tashi/webform/contact
 
   # gmail is optional — omit to disable the route
   gmail:

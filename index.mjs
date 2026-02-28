@@ -25,9 +25,7 @@ const APP_DEFINITIONS = {
   },
 };
 
-// complaint route constants (no app-level config — uses agents directly)
-const COMPLAINT_PAYLOAD_NAME = 'webform:complaint';
-const COMPLAINT_SESSION_KEY = 'hook:webform:complaint';
+// webform route — generic, formId from URL path
 
 const rawConfig = loadConfig(configPath);
 const config = normalizeConfig(rawConfig);
@@ -70,7 +68,7 @@ app.use('/v1/webhooks/agents/*', cors({
 app.get('/healthz', (c) => {
   const routes = [
     ...Object.values(APP_DEFINITIONS).map((def) => def.path),
-    '/v1/webhooks/agents/:agentId/complaint',
+    '/v1/webhooks/agents/:agentId/webform/:formId',
   ];
 
   return c.json({
@@ -86,7 +84,7 @@ app.get('/healthz', (c) => {
 });
 
 app.post(APP_DEFINITIONS.krisp.path, handleKrispWebhook);
-app.post('/v1/webhooks/agents/:agentId/complaint', handleAgentComplaintWebhook);
+app.post('/v1/webhooks/agents/:agentId/webform/:formId', handleWebformWebhook);
 app.post('/v1/webhooks/agents/:agentId/gmail', handleGmailWebhook);
 
 app.post('/v1/webhooks/apps/*', (c) => {
@@ -336,9 +334,10 @@ async function handleKrispWebhook(c) {
   }
 }
 
-async function handleAgentComplaintWebhook(c) {
+async function handleWebformWebhook(c) {
   const path = new URL(c.req.url).pathname;
   const agentId = String(c.req.param('agentId') ?? '').trim();
+  const formId = String(c.req.param('formId') ?? '').trim();
   const agentConfig = config.agents[agentId];
 
   if (!agentConfig) {
@@ -346,11 +345,16 @@ async function handleAgentComplaintWebhook(c) {
     return c.json({ ok: false, error: 'unknown_agent' }, 404);
   }
 
+  if (!formId) {
+    log('warn', `[namche-api-proxy] missing_form_id path=${path} agent=${agentId}`);
+    return c.json({ ok: false, error: 'missing_form_id' }, 400);
+  }
+
   const body = await c.req.arrayBuffer();
   const message = Buffer.from(body).toString('utf8');
 
   if (shouldLog('debug')) {
-    log('debug', `[namche-api-proxy] incoming_payload app=webform-complaint agent=${agentId} bytes=${body.byteLength} body=${message}`);
+    log('debug', `[namche-api-proxy] incoming_payload app=webform form=${formId} agent=${agentId} bytes=${body.byteLength} body=${message}`);
   }
 
   const controller = new AbortController();
@@ -358,25 +362,25 @@ async function handleAgentComplaintWebhook(c) {
 
   try {
     const payload = JSON.stringify({
-      name: COMPLAINT_PAYLOAD_NAME,
+      name: `webform:${formId}`,
       message,
       agentId: 'webform',
-      sessionKey: COMPLAINT_SESSION_KEY,
+      sessionKey: `hook:webform:${formId}`,
       wakeMode: 'next-heartbeat',
       deliver: false,
     });
 
     if (shouldLog('debug')) {
-      log('debug', `[namche-api-proxy] forward_payload app=webform-complaint agent=${agentId} body=${payload}`);
+      log('debug', `[namche-api-proxy] forward_payload app=webform form=${formId} agent=${agentId} body=${payload}`);
     }
 
     const upstream = await forwardToAgent(agentConfig, payload, controller.signal);
-    log('info', `[namche-api-proxy] app=webform-complaint agent=${agentId} status=${upstream.status} bytes=${body.byteLength}`);
+    log('info', `[namche-api-proxy] app=webform form=${formId} agent=${agentId} status=${upstream.status} bytes=${body.byteLength}`);
     return upstream;
   } catch (error) {
     const code = error?.name === 'AbortError' ? 504 : 502;
     const messageText = error instanceof Error ? error.message : 'forward request failed';
-    log('error', `[namche-api-proxy] app=webform-complaint agent=${agentId} error=${messageText}`);
+    log('error', `[namche-api-proxy] app=webform form=${formId} agent=${agentId} error=${messageText}`);
     return c.json({ ok: false, error: messageText }, code);
   } finally {
     clearTimeout(timeout);
