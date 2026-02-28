@@ -1,4 +1,4 @@
-name: Deploy Namche API Proxy to Bertrand
+name: Deploy API Proxy to Bertrand
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: deploy-namche-api-proxy-main
+  group: deploy-api-proxy-main
   cancel-in-progress: true
 
 jobs:
@@ -45,7 +45,7 @@ jobs:
       - name: Sync application files
         env:
           DEPLOY_HOST: bertrand.batlogg.com
-          DEPLOY_PATH: /home/deploy/apps/namche-api-proxy
+          DEPLOY_PATH: /home/deploy/apps/api-proxy
         run: |
           ssh -i ~/.ssh/id_ed25519 "deploy@$DEPLOY_HOST" "mkdir -p '$DEPLOY_PATH'"
 
@@ -60,7 +60,7 @@ jobs:
       - name: Install production dependencies and restart service
         env:
           DEPLOY_HOST: bertrand.batlogg.com
-          DEPLOY_PATH: /home/deploy/apps/namche-api-proxy
+          DEPLOY_PATH: /home/deploy/apps/api-proxy
           SERVICE_NAME: namche-api-proxy.service
         run: |
           ssh -i ~/.ssh/id_ed25519 "deploy@$DEPLOY_HOST" \
