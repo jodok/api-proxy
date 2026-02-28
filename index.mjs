@@ -20,15 +20,14 @@ const APP_DEFINITIONS = {
     payloadName: 'notetaker:krisp',
     sessionKey: 'hook:notetaker:krisp',
   },
-  complaint: {
-    path: '/v1/webhooks/agents/:agentId/complaint',
-    payloadName: 'webform:complaint',
-    sessionKey: 'hook:webform:complaint',
-  },
   gmail: {
     path: '/v1/webhooks/agents/:agentId/gmail',
   },
 };
+
+// complaint route constants (no app-level config — uses agents directly)
+const COMPLAINT_PAYLOAD_NAME = 'webform:complaint';
+const COMPLAINT_SESSION_KEY = 'hook:webform:complaint';
 
 const rawConfig = loadConfig(configPath);
 const config = normalizeConfig(rawConfig);
@@ -368,10 +367,10 @@ async function handleAgentComplaintWebhook(c) {
 
   try {
     const payload = JSON.stringify({
-      name: APP_DEFINITIONS.complaint.payloadName,
+      name: COMPLAINT_PAYLOAD_NAME,
       message,
       agentId: 'webform',
-      sessionKey: APP_DEFINITIONS.complaint.sessionKey,
+      sessionKey: COMPLAINT_SESSION_KEY,
       wakeMode: 'next-heartbeat',
       deliver: false,
     });
