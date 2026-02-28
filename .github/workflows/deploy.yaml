@@ -61,7 +61,7 @@ jobs:
         env:
           DEPLOY_HOST: bertrand.batlogg.com
           DEPLOY_PATH: /home/deploy/apps/api-proxy
-          SERVICE_NAME: namche-api-proxy.service
+          SERVICE_NAME: api-proxy.service
         run: |
           ssh -i ~/.ssh/id_ed25519 "deploy@$DEPLOY_HOST" \
             "cd '$DEPLOY_PATH' && npm ci --omit=dev && sudo systemctl restart '$SERVICE_NAME' && sudo systemctl is-active --quiet '$SERVICE_NAME'"
