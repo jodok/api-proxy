@@ -100,16 +100,7 @@ app.post('/v1/webhooks/agents/*', (c) => {
 });
 
 app.all('*', (c) => {
-  const usage = [
-    ...Object.values(APP_DEFINITIONS).map((def) => `POST ${def.path}`),
-    'POST /v1/webhooks/agents/:agentId/complaint',
-  ];
-
-  return c.json({
-    ok: false,
-    error: 'not_found',
-    usage,
-  }, 404);
+  return c.json({ ok: true }, 200);
 });
 
 serve({ fetch: app.fetch, hostname: config.listen.host, port: config.listen.port }, () => {
