@@ -8,10 +8,11 @@ Hono service for `api.namche.ai`.
 - validate app-specific incoming auth
 - forward to OpenClaw agents over Tailscale HTTPS
 
-## Current Endpoint
+## Current Endpoints
 
 - `POST /v1/webhooks/apps/krisp`
 - `POST /v1/webhooks/agents/:agentId/complaint`
+- `POST /v1/webhooks/agents/:agentId/gmail` (optional, Gmail Pub/Sub push)
 
 ## Configuration
 
@@ -85,6 +86,52 @@ Forwarded payload:
   "agentId": "main"
 }
 ```
+
+## Gmail Pub/Sub Forwarding
+
+Optional route — only active if `apps.gmail` is present in config.
+
+Incoming endpoint:
+
+- `POST /v1/webhooks/agents/:agentId/gmail`
+- auth: GCP Pub/Sub OIDC JWT (`Authorization: Bearer <jwt>`) — verified against Google's public keys
+
+Forwarded request:
+
+- `POST <apps.gmail.forwardUrl>` (raw Pub/Sub body, pass-through)
+- target is `gog gmail watch serve` on the agent host
+
+Config:
+
+```yaml
+apps:
+  gmail:
+    oidcEmail: <SERVICE_ACCOUNT>@<PROJECT>.iam.gserviceaccount.com
+    targetAgent: tashi
+    forwardUrl: https://<tashi-tailscale-host>/gmail-pubsub?token=<GOG_SERVE_TOKEN>
+```
+
+GCP Pub/Sub subscription — create with OIDC auth (no token in URL):
+
+```bash
+# 1. Create a dedicated service account for Pub/Sub push auth
+gcloud iam service-accounts create pubsub-push \
+  --display-name="Pub/Sub push auth" \
+  --project=<PROJECT_ID>
+
+# 2. Grant it permission to publish to the topic (so GCP accepts the OIDC token)
+gcloud pubsub topics add-iam-policy-binding <TOPIC> \
+  --member="serviceAccount:pubsub-push@<PROJECT_ID>.iam.gserviceaccount.com" \
+  --role="roles/pubsub.publisher"
+
+# 3. Update the push subscription with OIDC auth — clean URL, no token param
+gcloud pubsub subscriptions modify-push-config <SUBSCRIPTION> \
+  --push-endpoint="https://api.namche.ai/v1/webhooks/agents/tashi/gmail" \
+  --push-auth-service-account="pubsub-push@<PROJECT_ID>.iam.gserviceaccount.com"
+# audience defaults to the push endpoint URL — matches what the proxy verifies
+```
+
+Set `oidcEmail` in config to `pubsub-push@<PROJECT_ID>.iam.gserviceaccount.com`.
 
 ## Local Run
 
