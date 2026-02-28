@@ -364,7 +364,6 @@ async function handleWebformWebhook(c) {
     const payload = JSON.stringify({
       name: `webform:${formId}`,
       message,
-      agentId: 'webform',
       sessionKey: `hook:webform:${formId}`,
       wakeMode: 'next-heartbeat',
       deliver: false,
