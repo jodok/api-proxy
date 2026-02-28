@@ -22,17 +22,19 @@ apps:
     # deliver: false             — queued silently; no immediate notification pushed
 
   # gmail is optional — omit to disable the route
-  # Receives raw Pub/Sub push from Google, verifies OIDC JWT, forwards to gog gmail watch serve
+  # Single endpoint handles two legs of the Gmail pipeline:
+  #
+  # Leg 1 — Google Pub/Sub → api-proxy → gog gmail watch serve
+  #   Google sends OIDC JWT; proxy verifies and forwards raw body to forwardUrl (gog).
+  #
+  # Leg 2 — gog gmail watch serve → api-proxy → OpenClaw
+  #   gog sends processed payload (messages + labels) with hookToken auth.
+  #   Proxy filters for Label_15 + INBOX (!SENT), then forwards to hookUrl (OpenClaw).
+  #   Set gog: --hook-url https://api.namche.ai/v1/webhooks/agents/tashi/gmail
+  #            --hook-token <same as hookToken below>
   gmail:
     oidcEmail: <SERVICE_ACCOUNT>@<PROJECT>.iam.gserviceaccount.com  # expected GCP SA in OIDC JWT
     targetAgent: tashi
     forwardUrl: https://tashi.silverside-mermaid.ts.net/gmail-pubsub?token=<GOG_SERVE_TOKEN>
-
-  # gmail-hook is optional — omit to disable the route
-  # Receives gog-processed payload (messages + labels), filters by Label_15, forwards to OpenClaw
-  # Set gog gmail watch serve --hook-url to https://api.namche.ai/v1/webhooks/agents/tashi/gmail-hook
-  # and --hook-token to the same value as hookToken below.
-  gmail-hook:
-    targetAgent: tashi
-    hookToken: <SHARED_TOKEN>                              # shared secret, set in gog --hook-token
-    hookUrl: https://tashi.silverside-mermaid.ts.net/hooks/gmail  # OpenClaw hooks endpoint via Tailscale
+    hookToken: <SHARED_TOKEN>          # shared secret — set as gog --hook-token
+    hookUrl: https://tashi.silverside-mermaid.ts.net/hooks/gmail  # OpenClaw hooks endpoint

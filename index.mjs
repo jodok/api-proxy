@@ -22,10 +22,6 @@ const APP_DEFINITIONS = {
   },
   gmail: {
     path: '/v1/webhooks/agents/:agentId/gmail',
-  },
-  // gmail-hook: receives gog-processed payload (messages + labels), filters, forwards to OpenClaw
-  'gmail-hook': {
-    path: '/v1/webhooks/agents/:agentId/gmail-hook',
     requiredLabel: 'Label_15',
   },
 };
@@ -76,7 +72,6 @@ app.get('/healthz', (c) => {
   const routes = [
     ...Object.values(APP_DEFINITIONS).map((def) => def.path),
     '/v1/webhooks/agents/:agentId/complaint',
-    '/v1/webhooks/agents/:agentId/gmail-hook',
   ];
 
   return c.json({
@@ -94,7 +89,6 @@ app.get('/healthz', (c) => {
 app.post(APP_DEFINITIONS.krisp.path, handleKrispWebhook);
 app.post('/v1/webhooks/agents/:agentId/complaint', handleAgentComplaintWebhook);
 app.post('/v1/webhooks/agents/:agentId/gmail', handleGmailWebhook);
-app.post('/v1/webhooks/agents/:agentId/gmail-hook', handleGmailHookWebhook);
 
 app.post('/v1/webhooks/apps/*', (c) => {
   log('warn', `[namche-api-proxy] invalid_path family=apps path=${new URL(c.req.url).pathname}`);
@@ -198,28 +192,13 @@ function normalizeConfig(raw) {
         throw new Error(`[namche-api-proxy] App 'gmail' references unknown agent '${targetAgent}'`);
       }
 
-      normalizedApps.gmail = { ...appDef, oidcEmail, targetAgent, forwardUrl };
-      continue;
-    }
-
-    if (appId === 'gmail-hook') {
-      if (!appConfig) continue;
-      if (typeof appConfig !== 'object') {
-        throw new Error(`[namche-api-proxy] App 'gmail-hook' config must be an object`);
-      }
-
       const hookToken = String(appConfig.hookToken ?? '').trim();
-      const targetAgent = String(appConfig.targetAgent ?? '').trim();
       const hookUrl = String(appConfig.hookUrl ?? '').trim();
 
-      if (!hookToken) throw new Error(`[namche-api-proxy] App 'gmail-hook' missing hookToken`);
-      if (!targetAgent) throw new Error(`[namche-api-proxy] App 'gmail-hook' missing targetAgent`);
-      if (!hookUrl) throw new Error(`[namche-api-proxy] App 'gmail-hook' missing hookUrl`);
-      if (!normalizedAgents[targetAgent]) {
-        throw new Error(`[namche-api-proxy] App 'gmail-hook' references unknown agent '${targetAgent}'`);
-      }
+      if (!hookToken) throw new Error(`[namche-api-proxy] App 'gmail' missing hookToken`);
+      if (!hookUrl) throw new Error(`[namche-api-proxy] App 'gmail' missing hookUrl`);
 
-      normalizedApps['gmail-hook'] = { ...appDef, hookToken, targetAgent, hookUrl };
+      normalizedApps.gmail = { ...appDef, oidcEmail, targetAgent, forwardUrl, hookToken, hookUrl };
       continue;
     }
 
@@ -426,17 +405,24 @@ async function handleGmailWebhook(c) {
     return c.json({ ok: false, error: 'unknown_agent' }, 404);
   }
 
-  // Verify GCP Pub/Sub OIDC JWT (sent in Authorization: Bearer header)
   const authHeader = c.req.header('authorization') ?? '';
-  const jwt = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
-  if (!jwt) {
-    log('warn', `[namche-api-proxy] unauthorized app=gmail agent=${agentId} reason=missing_jwt`);
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+
+  // --- Mode A: gog processed payload (hook-token auth) ---
+  // gog sends its hook-token via Authorization: Bearer <hookToken>
+  if (token === appConfig.hookToken) {
+    return handleGmailProcessedPayload(c, agentId, appConfig);
+  }
+
+  // --- Mode B: Google Pub/Sub push (OIDC JWT auth) ---
+  if (!token) {
+    log('warn', `[namche-api-proxy] unauthorized app=gmail agent=${agentId} reason=missing_auth`);
     return c.json({ ok: false, error: 'unauthorized' }, 401);
   }
 
   try {
     const audience = `https://api.namche.ai/v1/webhooks/agents/${agentId}/gmail`;
-    const { payload } = await jwtVerify(jwt, GOOGLE_JWKS, {
+    const { payload } = await jwtVerify(token, GOOGLE_JWKS, {
       issuer: 'https://accounts.google.com',
       audience,
     });
@@ -449,10 +435,11 @@ async function handleGmailWebhook(c) {
     return c.json({ ok: false, error: 'unauthorized' }, 401);
   }
 
+  // Verified Pub/Sub push — forward raw body to gog gmail watch serve
   const body = await c.req.arrayBuffer();
 
   if (shouldLog('debug')) {
-    log('debug', `[namche-api-proxy] incoming_payload app=gmail agent=${agentId} bytes=${body.byteLength}`);
+    log('debug', `[namche-api-proxy] pubsub_forward app=gmail agent=${agentId} bytes=${body.byteLength}`);
   }
 
   const controller = new AbortController();
@@ -470,51 +457,31 @@ async function handleGmailWebhook(c) {
     });
 
     const responseBody = await upstream.arrayBuffer();
-    log('info', `[namche-api-proxy] app=gmail agent=${agentId} status=${upstream.status} bytes=${body.byteLength}`);
+    log('info', `[namche-api-proxy] app=gmail agent=${agentId} pubsub→gog status=${upstream.status} bytes=${body.byteLength}`);
     return new Response(responseBody, { status: upstream.status });
   } catch (error) {
     const code = error?.name === 'AbortError' ? 504 : 502;
     const messageText = error instanceof Error ? error.message : 'forward request failed';
-    log('error', `[namche-api-proxy] app=gmail agent=${agentId} error=${messageText}`);
+    log('error', `[namche-api-proxy] app=gmail agent=${agentId} pubsub→gog error=${messageText}`);
     return c.json({ ok: false, error: messageText }, code);
   } finally {
     clearTimeout(timeout);
   }
 }
 
-async function handleGmailHookWebhook(c) {
-  const path = new URL(c.req.url).pathname;
-  const agentId = String(c.req.param('agentId') ?? '').trim();
-  const appConfig = config.apps['gmail-hook'];
-
-  if (!appConfig) {
-    log('warn', `[namche-api-proxy] gmail_hook_not_configured path=${path}`);
-    return c.json({ ok: false, error: 'not_configured' }, 404);
-  }
-
-  if (agentId !== appConfig.targetAgent) {
-    log('warn', `[namche-api-proxy] unknown_agent path=${path} agent=${agentId || 'none'}`);
-    return c.json({ ok: false, error: 'unknown_agent' }, 404);
-  }
-
-  // Verify shared hook token (gog sends this via x-gog-hook-token header or Authorization)
-  const providedToken = c.req.header('x-gog-hook-token') ?? extractBearerToken(c.req.header('authorization') ?? '');
-  if (!providedToken || providedToken !== appConfig.hookToken) {
-    log('warn', `[namche-api-proxy] unauthorized app=gmail-hook agent=${agentId} reason=invalid_token`);
-    return c.json({ ok: false, error: 'unauthorized' }, 401);
-  }
-
+async function handleGmailProcessedPayload(c, agentId, appConfig) {
+  // Receives gog-processed payload (messages + labels).
+  // Filters for requiredLabel (Label_15) + INBOX, drops SENT.
+  // Forwards matching messages to OpenClaw.
   const body = await c.req.text();
   let parsed;
   try {
     parsed = JSON.parse(body);
   } catch {
-    log('warn', `[namche-api-proxy] invalid_json app=gmail-hook agent=${agentId}`);
+    log('warn', `[namche-api-proxy] invalid_json app=gmail mode=hook agent=${agentId}`);
     return c.json({ ok: false, error: 'invalid_json' }, 400);
   }
 
-  // Filter: only forward if at least one message has the required label (Label_15),
-  // is in INBOX, and is not SENT.
   const requiredLabel = appConfig.requiredLabel;
   const messages = Array.isArray(parsed.messages) ? parsed.messages : [];
   const relevant = messages.filter((msg) => {
@@ -527,13 +494,12 @@ async function handleGmailHookWebhook(c) {
   });
 
   if (relevant.length === 0) {
-    log('info', `[namche-api-proxy] app=gmail-hook agent=${agentId} dropped=no_label_${requiredLabel} total_messages=${messages.length}`);
+    log('info', `[namche-api-proxy] app=gmail mode=hook agent=${agentId} dropped=no_${requiredLabel} total=${messages.length}`);
     return c.json({ ok: true, dropped: true }, 200);
   }
 
-  log('info', `[namche-api-proxy] app=gmail-hook agent=${agentId} forwarding matched=${relevant.length} total=${messages.length}`);
+  log('info', `[namche-api-proxy] app=gmail mode=hook agent=${agentId} forwarding matched=${relevant.length} total=${messages.length}`);
 
-  // Forward only the matching messages to OpenClaw
   const filteredPayload = JSON.stringify({ ...parsed, messages: relevant });
 
   const controller = new AbortController();
@@ -552,12 +518,12 @@ async function handleGmailHookWebhook(c) {
     });
 
     const responseBody = await upstream.arrayBuffer();
-    log('info', `[namche-api-proxy] app=gmail-hook agent=${agentId} upstream_status=${upstream.status}`);
+    log('info', `[namche-api-proxy] app=gmail mode=hook agent=${agentId} gog→openclaw status=${upstream.status}`);
     return new Response(responseBody, { status: upstream.status });
   } catch (error) {
     const code = error?.name === 'AbortError' ? 504 : 502;
     const messageText = error instanceof Error ? error.message : 'forward request failed';
-    log('error', `[namche-api-proxy] app=gmail-hook agent=${agentId} error=${messageText}`);
+    log('error', `[namche-api-proxy] app=gmail mode=hook agent=${agentId} gog→openclaw error=${messageText}`);
     return c.json({ ok: false, error: messageText }, code);
   } finally {
     clearTimeout(timeout);
