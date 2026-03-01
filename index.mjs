@@ -415,7 +415,6 @@ async function handleKrispWebhook(c) {
 
     logDebugPayload('forward_payload', {
       app: 'krisp',
-      targetAgent: appConfig.targetAgent,
       ...buildForwardEnvelopeDebug(payload),
     });
 
@@ -532,10 +531,6 @@ async function handleGithubWebhook(c) {
 
     logDebugPayload('forward_payload', {
       app: 'github',
-      repository,
-      event,
-      action,
-      targetAgent: appConfig.targetAgent,
       ...buildForwardEnvelopeDebug(payload),
     });
 
@@ -595,8 +590,6 @@ async function handleWebformWebhook(c) {
 
     logDebugPayload('forward_payload', {
       app: 'webform',
-      formId,
-      agentId,
       ...buildForwardEnvelopeDebug(payload),
     });
 
