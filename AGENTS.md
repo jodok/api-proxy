@@ -51,13 +51,16 @@ Do not deploy app source into nginx web root (`/var/www/html`).
 
 ## Configuration Model
 
-Hardwired app handlers in code (currently `krisp`, `complaint`) use YAML config for wiring and credentials:
+Hardwired app handlers in code (currently `krisp`, optional `github`, optional `gmail`) use YAML config for wiring and credentials:
 
 - `WEBFORM_ALLOWED_ORIGINS`
 - `agents.<shortname>.url`
 - `agents.<shortname>.openclawHooksToken`
 - `apps.krisp.incomingAuthorization`
 - `apps.krisp.targetAgent`
+- `apps.github.targetAgent`
+- `apps.github.repositories.<repository>.webhookSecret`
+- `apps.github.repositories.<repository>.sessionKey`
 
 No enable/disable flags and no timeout config knobs.
 
@@ -80,10 +83,11 @@ Each app forwards to OpenClaw with a fixed set of hook parameters. These are def
 - `wakeMode: next-heartbeat` — processed at the next heartbeat, not urgently
 - `deliver: false` — queued silently, no immediate notification
 
-**complaint** (`POST /v1/webhooks/agents/:agentId/complaint`):
-- `sessionKey: hook:complaint:webform` — complaint webform hook session
-- `wakeMode: now` — agent woken immediately to handle the complaint
-- `deliver: true` — notification pushed so the agent acts right away
+**github** (`POST /v1/webhooks/apps/github/:repository`):
+- `agentId: github` — routes into the github hook worker
+- `sessionKey` comes from `apps.github.repositories.<repository>.sessionKey`
+- `wakeMode: now` — agent wakes immediately
+- `deliver: true` — push notification to process event now
 
 ## Logging
 

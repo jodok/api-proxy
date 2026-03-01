@@ -11,7 +11,8 @@ Hono service for `api.namche.ai`.
 ## Current Endpoints
 
 - `POST /v1/webhooks/apps/krisp`
-- `POST /v1/webhooks/agents/:agentId/complaint`
+- `POST /v1/webhooks/apps/github/:repository` (optional, GitHub webhooks)
+- `POST /v1/webhooks/agents/:agentId/webform/:formId`
 - `POST /v1/webhooks/agents/:agentId/gmail` (optional, Gmail Pub/Sub push)
 
 ## Configuration
@@ -32,10 +33,13 @@ Current config shape:
     - `url`
     - `openclawHooksToken`
 - `apps`:
-  - currently `krisp`
+  - currently `krisp`, optional `github`, optional `gmail`
   - defines:
-    - `incomingAuthorization` (full Authorization header value)
-    - `targetAgent` (agent shortname)
+    - `krisp.incomingAuthorization` (full Authorization header value)
+    - `krisp.targetAgent` (agent shortname)
+    - `github.targetAgent` (agent shortname)
+    - `github.repositories.<repository>.webhookSecret`
+    - `github.repositories.<repository>.sessionKey`
 
 See:
 
@@ -59,8 +63,10 @@ Forwarded payload:
 {
   "name": "notetaker:krisp",
   "message": "<raw body string>",
-  "deliver": true,
-  "wakeMode": "now"
+  "agentId": "notetaker",
+  "sessionKey": "hook:notetaker:krisp",
+  "deliver": false,
+  "wakeMode": "next-heartbeat"
 }
 ```
 
@@ -68,22 +74,65 @@ Expected upstream response:
 
 - `202 { "status": "ok" }`
 
-## Webform Complaint Forwarding
+## GitHub Forwarding
+
+Optional route — only active if `apps.github` is present in config.
 
 Incoming endpoint:
 
-- `POST /v1/webhooks/agents/:agentId/complaint`
+- `POST /v1/webhooks/apps/github/:repository`
+- auth: GitHub HMAC signature (`X-Hub-Signature-256`) using per-repo webhook secret
+
+Routing model:
+
+- `:repository` from the URL must exist in `apps.github.repositories`
+- each repository has its own `webhookSecret` and `sessionKey`
+- all mapped repositories forward to `apps.github.targetAgent`
+
+Forwarded payload:
+
+```json
+{
+  "name": "github:<repository>",
+  "message": "{\"source\":\"github\",\"repository\":\"<repository>\",\"event\":\"<x-github-event>\",\"action\":\"<payload.action>\",\"delivery\":\"<x-github-delivery>\",\"payload\":{...}}",
+  "agentId": "github",
+  "sessionKey": "agent:main:discord:channel:<DISCORD_CHANNEL_ID>",
+  "wakeMode": "now",
+  "deliver": true
+}
+```
+
+Config:
+
+```yaml
+apps:
+  github:
+    targetAgent: tashi
+    repositories:
+      namche.ai:
+        webhookSecret: <GITHUB_WEBHOOK_SECRET_NAMCHE_AI>
+        sessionKey: agent:main:discord:channel:<DISCORD_CHANNEL_ID_NAMCHE_AI>
+      api-proxy:
+        webhookSecret: <GITHUB_WEBHOOK_SECRET_API_PROXY>
+        sessionKey: agent:main:discord:channel:<DISCORD_CHANNEL_ID_API_PROXY>
+```
+
+## Webform Forwarding
+
+Incoming endpoint:
+
+- `POST /v1/webhooks/agents/:agentId/webform/:formId`
 - browser CORS origin allowlist comes from `WEBFORM_ALLOWED_ORIGINS`
 
 Forwarded payload:
 
 ```json
 {
-  "name": "complaint:webform",
+  "name": "webform:<formId>",
   "message": "<raw body string>",
-  "deliver": true,
-  "wakeMode": "now",
-  "agentId": "main"
+  "sessionKey": "hook:webform:<formId>",
+  "wakeMode": "next-heartbeat",
+  "deliver": false
 }
 ```
 
