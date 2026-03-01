@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
@@ -19,6 +20,9 @@ const APP_DEFINITIONS = {
     path: '/v1/webhooks/apps/krisp',
     payloadName: 'notetaker:krisp',
     sessionKey: 'hook:notetaker:krisp',
+  },
+  github: {
+    path: '/v1/webhooks/apps/github/:repository',
   },
   gmail: {
     path: '/v1/webhooks/agents/:agentId/gmail',
@@ -84,6 +88,7 @@ app.get('/healthz', (c) => {
 });
 
 app.post(APP_DEFINITIONS.krisp.path, handleKrispWebhook);
+app.post(APP_DEFINITIONS.github.path, handleGithubWebhook);
 app.post('/v1/webhooks/agents/:agentId/webform/:formId', handleWebformWebhook);
 app.post('/v1/webhooks/agents/:agentId/gmail', handleGmailWebhook);
 
@@ -170,6 +175,57 @@ function normalizeConfig(raw) {
   const normalizedApps = {};
   for (const [appId, appDef] of Object.entries(APP_DEFINITIONS)) {
     const appConfig = apps[appId];
+
+    // github is optional — only active when present in config
+    if (appId === 'github') {
+      if (!appConfig) continue;
+      if (typeof appConfig !== 'object') {
+        throw new Error(`[namche-api-proxy] App 'github' config must be an object`);
+      }
+
+      const targetAgent = String(appConfig.targetAgent ?? '').trim();
+      if (!targetAgent) throw new Error(`[namche-api-proxy] App 'github' missing targetAgent`);
+      if (!normalizedAgents[targetAgent]) {
+        throw new Error(`[namche-api-proxy] App 'github' references unknown agent '${targetAgent}'`);
+      }
+
+      const repositories = appConfig.repositories ?? {};
+      if (!repositories || typeof repositories !== 'object' || Array.isArray(repositories)) {
+        throw new Error(`[namche-api-proxy] App 'github' repositories must be an object`);
+      }
+
+      const normalizedRepositories = {};
+      for (const [repository, repoConfig] of Object.entries(repositories)) {
+        const repoName = String(repository ?? '').trim();
+        if (!repoName) {
+          throw new Error('[namche-api-proxy] App \'github\' repository key must be non-empty');
+        }
+
+        if (!repoConfig || typeof repoConfig !== 'object') {
+          throw new Error(`[namche-api-proxy] App 'github' repository '${repoName}' config must be an object`);
+        }
+
+        const webhookSecret = String(repoConfig.webhookSecret ?? '').trim();
+        const sessionKey = String(repoConfig.sessionKey ?? '').trim();
+
+        if (!webhookSecret) {
+          throw new Error(`[namche-api-proxy] App 'github' repository '${repoName}' missing webhookSecret`);
+        }
+
+        if (!sessionKey) {
+          throw new Error(`[namche-api-proxy] App 'github' repository '${repoName}' missing sessionKey`);
+        }
+
+        normalizedRepositories[repoName] = { webhookSecret, sessionKey };
+      }
+
+      if (Object.keys(normalizedRepositories).length === 0) {
+        throw new Error(`[namche-api-proxy] App 'github' requires at least one repository mapping`);
+      }
+
+      normalizedApps.github = { ...appDef, targetAgent, repositories: normalizedRepositories };
+      continue;
+    }
 
     // gmail is optional — only active when present in config
     if (appId === 'gmail') {
@@ -328,6 +384,115 @@ async function handleKrispWebhook(c) {
     const code = error?.name === 'AbortError' ? 504 : 502;
     const messageText = error instanceof Error ? error.message : 'forward request failed';
     log('error', `[namche-api-proxy] app=krisp agent=${appConfig.targetAgent} error=${messageText}`);
+    return c.json({ ok: false, error: messageText }, code);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function isValidRepositorySlug(value) {
+  return /^[A-Za-z0-9._-]{1,200}$/.test(value);
+}
+
+function verifyGithubSignature(rawBody, signatureHeader, webhookSecret) {
+  const signature = String(signatureHeader ?? '').trim();
+  if (!signature.toLowerCase().startsWith('sha256=')) return false;
+
+  const providedHex = signature.slice(7).trim();
+  if (!/^[A-Fa-f0-9]{64}$/.test(providedHex)) return false;
+
+  const expectedHex = createHmac('sha256', webhookSecret).update(rawBody).digest('hex');
+  const provided = Buffer.from(providedHex, 'hex');
+  const expected = Buffer.from(expectedHex, 'hex');
+
+  if (provided.length !== expected.length) return false;
+  return timingSafeEqual(provided, expected);
+}
+
+async function handleGithubWebhook(c) {
+  const path = new URL(c.req.url).pathname;
+  const repository = String(c.req.param('repository') ?? '').trim();
+  const appConfig = config.apps.github;
+
+  if (!appConfig) {
+    log('warn', `[namche-api-proxy] github_not_configured path=${path}`);
+    return c.json({ ok: false, error: 'not_configured' }, 404);
+  }
+
+  if (!repository || !isValidRepositorySlug(repository)) {
+    log('warn', `[namche-api-proxy] invalid_repository path=${path} repository=${repository || 'none'}`);
+    return c.json({ ok: false, error: 'invalid_repository' }, 400);
+  }
+
+  const repositoryConfig = appConfig.repositories[repository];
+  if (!repositoryConfig) {
+    log('warn', `[namche-api-proxy] unknown_repository path=${path} repository=${repository}`);
+    return c.json({ ok: false, error: 'unknown_repository' }, 404);
+  }
+
+  const body = await c.req.arrayBuffer();
+  const rawBody = Buffer.from(body);
+  const signatureHeader = c.req.header('x-hub-signature-256');
+
+  if (!verifyGithubSignature(rawBody, signatureHeader, repositoryConfig.webhookSecret)) {
+    log('warn', `[namche-api-proxy] unauthorized app=github repository=${repository} reason=signature_invalid`);
+    return c.json({ ok: false, error: 'unauthorized' }, 401);
+  }
+
+  const event = String(c.req.header('x-github-event') ?? '').trim() || 'unknown';
+  const delivery = String(c.req.header('x-github-delivery') ?? '').trim();
+  const rawMessage = rawBody.toString('utf8');
+
+  let parsedPayload;
+  try {
+    parsedPayload = JSON.parse(rawMessage);
+  } catch {
+    parsedPayload = rawMessage;
+  }
+
+  const action = typeof parsedPayload === 'object' && parsedPayload !== null
+    ? String(parsedPayload.action ?? '').trim()
+    : '';
+
+  if (shouldLog('debug')) {
+    log('debug', `[namche-api-proxy] incoming_payload app=github repository=${repository} event=${event} action=${action || 'none'} delivery=${delivery || 'none'} bytes=${body.byteLength}`);
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FORWARD_TIMEOUT_MS);
+
+  try {
+    const message = JSON.stringify({
+      source: 'github',
+      repository,
+      event,
+      action,
+      delivery,
+      payload: parsedPayload,
+    });
+
+    const payload = JSON.stringify({
+      name: `github:${repository}`,
+      message,
+      agentId: 'github',
+      sessionKey: repositoryConfig.sessionKey,
+      wakeMode: 'now',
+      deliver: true,
+    });
+
+    if (shouldLog('debug')) {
+      log('debug', `[namche-api-proxy] forward_payload app=github repository=${repository} event=${event} action=${action || 'none'} body=${payload}`);
+    }
+
+    const agentConfig = config.agents[appConfig.targetAgent];
+    const upstream = await forwardToAgent(agentConfig, payload, controller.signal);
+
+    log('info', `[namche-api-proxy] app=github repository=${repository} event=${event} action=${action || 'none'} agent=${appConfig.targetAgent} status=${upstream.status} bytes=${body.byteLength}`);
+    return upstream;
+  } catch (error) {
+    const code = error?.name === 'AbortError' ? 504 : 502;
+    const messageText = error instanceof Error ? error.message : 'forward request failed';
+    log('error', `[namche-api-proxy] app=github repository=${repository} event=${event} error=${messageText}`);
     return c.json({ ok: false, error: messageText }, code);
   } finally {
     clearTimeout(timeout);
