@@ -1,5 +1,5 @@
 {
-  "name": "namche-api-proxy",
+  "name": "api-proxy",
   "version": "0.1.0",
   "type": "module",
   "private": false,

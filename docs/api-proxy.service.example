@@ -1,0 +1,17 @@
+[Unit]
+Description=API Proxy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=deploy
+Group=www-data
+WorkingDirectory=/home/deploy/apps/api-proxy
+Environment=CONFIG_PATH=/etc/api-proxy/config.yaml
+ExecStart=/usr/bin/node /home/deploy/apps/api-proxy/index.mjs
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
