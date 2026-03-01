@@ -1,4 +1,4 @@
-# namche-api-proxy
+# api-proxy
 
 Hono service for `api.namche.ai`.
 
@@ -19,7 +19,7 @@ Hono service for `api.namche.ai`.
 
 Config is loaded from YAML:
 
-- default: `/etc/namche-api-proxy/config.yaml`
+- default: `/etc/api-proxy/config.yaml`
 - optional override: `CONFIG_PATH=/custom/path/config.yaml`
 
 Current config shape:
@@ -197,8 +197,8 @@ GitHub Actions deploy is defined in:
 It deploys to:
 
 - host: `bertrand.batlogg.com`
-- path: `/home/deploy/apps/namche-api-proxy`
-- restart target: `namche-api-proxy.service`
+- path: `/home/deploy/apps/api-proxy`
+- restart target: `api-proxy.service`
 
 Nginx integration (from infra):
 
@@ -207,10 +207,10 @@ Nginx integration (from infra):
 
 Production files on Bertrand:
 
-- `/etc/namche-api-proxy/config.yaml`
+- `/etc/api-proxy/config.yaml`
 
 Config contains secrets. Restrict file permissions accordingly.
 
 See service template:
 
-- `docs/namche-api-proxy.service.example`
+- `docs/api-proxy.service.example`

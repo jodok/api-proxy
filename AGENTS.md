@@ -1,4 +1,4 @@
-# AGENTS.md — namche-api-proxy
+# AGENTS.md — api-proxy
 
 ## Project
 
@@ -42,9 +42,9 @@ npm start
 
 - Public domain: `api.namche.ai`
 - Nginx on `bertrand.batlogg.com` proxies to `127.0.0.1:3000`
-- App deploy path: `/home/deploy/apps/namche-api-proxy`
-- Systemd service: `namche-api-proxy.service`
-- Config file: `/etc/namche-api-proxy/config.yaml`
+- App deploy path: `/home/deploy/apps/api-proxy`
+- Systemd service: `api-proxy.service`
+- Config file: `/etc/api-proxy/config.yaml`
 - CI workflow: `.github/workflows/deploy.yaml`
 
 Do not deploy app source into nginx web root (`/var/www/html`).
@@ -97,5 +97,5 @@ Each app forwards to OpenClaw with a fixed set of hook parameters. These are def
 
 - `index.mjs` — runtime server, config loading, auth checks, forwarding, logging
 - `docs/config.yaml.example` — config example (including secrets)
-- `docs/namche-api-proxy.service.example` — systemd unit template
+- `docs/api-proxy.service.example` — systemd unit template
 - `.github/workflows/deploy.yaml` — deploy to Bertrand
