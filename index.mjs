@@ -474,7 +474,6 @@ async function handleGithubWebhook(c) {
     const payload = JSON.stringify({
       name: `github:${repository}`,
       message,
-      agentId: 'github',
       sessionKey: repositoryConfig.sessionKey,
       wakeMode: 'now',
       deliver: true,

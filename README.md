@@ -95,7 +95,6 @@ Forwarded payload:
 {
   "name": "github:<repository>",
   "message": "{\"source\":\"github\",\"repository\":\"<repository>\",\"event\":\"<x-github-event>\",\"action\":\"<payload.action>\",\"delivery\":\"<x-github-delivery>\",\"payload\":{...}}",
-  "agentId": "github",
   "sessionKey": "agent:main:discord:channel:<DISCORD_CHANNEL_ID>",
   "wakeMode": "now",
   "deliver": true
