@@ -14,6 +14,7 @@ const app = new Hono();
 const DEFAULT_CONFIG_PATH = '/etc/api-proxy/config.yaml';
 const configPath = process.env.CONFIG_PATH ?? DEFAULT_CONFIG_PATH;
 const FORWARD_TIMEOUT_MS = 15000;
+const DEBUG_MESSAGE_PREVIEW_CHARS = 300;
 
 const APP_DEFINITIONS = {
   krisp: {
@@ -57,6 +58,35 @@ function log(level, message) {
 
 function toUtf8(bufferLike) {
   return Buffer.from(bufferLike).toString('utf8');
+}
+
+function previewText(value, maxChars = DEBUG_MESSAGE_PREVIEW_CHARS) {
+  const text = String(value ?? '');
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, maxChars)}…[truncated ${text.length - maxChars} chars]`;
+}
+
+function buildForwardEnvelopeDebug(payload) {
+  let parsed = payload;
+  if (typeof payload === 'string') {
+    try {
+      parsed = JSON.parse(payload);
+    } catch {
+      return { payloadPreview: previewText(payload) };
+    }
+  }
+
+  if (!parsed || typeof parsed !== 'object') {
+    return { payloadPreview: previewText(String(payload ?? '')) };
+  }
+
+  return {
+    name: parsed.name ?? '',
+    sessionKey: parsed.sessionKey ?? '',
+    wakeMode: parsed.wakeMode ?? '',
+    deliver: parsed.deliver ?? '',
+    messagePreview: previewText(parsed.message ?? ''),
+  };
 }
 
 function logDebugPayload(label, details) {
@@ -367,7 +397,7 @@ async function handleKrispWebhook(c) {
     app: 'krisp',
     path,
     bytes: body.byteLength,
-    bodyUtf8: message,
+    bodyPreview: previewText(message),
   });
 
   const controller = new AbortController();
@@ -386,7 +416,7 @@ async function handleKrispWebhook(c) {
     logDebugPayload('forward_payload', {
       app: 'krisp',
       targetAgent: appConfig.targetAgent,
-      payloadJson: payload,
+      ...buildForwardEnvelopeDebug(payload),
     });
 
     const upstream = await forwardToAgent(agentConfig, payload, controller.signal);
@@ -476,7 +506,7 @@ async function handleGithubWebhook(c) {
     delivery,
     sessionKey: repositoryConfig.sessionKey,
     bytes: body.byteLength,
-    bodyUtf8: rawMessage,
+    bodyPreview: previewText(rawMessage),
   });
 
   const controller = new AbortController();
@@ -506,7 +536,7 @@ async function handleGithubWebhook(c) {
       event,
       action,
       targetAgent: appConfig.targetAgent,
-      payloadJson: payload,
+      ...buildForwardEnvelopeDebug(payload),
     });
 
     const agentConfig = config.agents[appConfig.targetAgent];
@@ -548,7 +578,7 @@ async function handleWebformWebhook(c) {
     formId,
     agentId,
     bytes: body.byteLength,
-    bodyUtf8: message,
+    bodyPreview: previewText(message),
   });
 
   const controller = new AbortController();
@@ -567,7 +597,7 @@ async function handleWebformWebhook(c) {
       app: 'webform',
       formId,
       agentId,
-      payloadJson: payload,
+      ...buildForwardEnvelopeDebug(payload),
     });
 
     const upstream = await forwardToAgent(agentConfig, payload, controller.signal);
@@ -629,8 +659,7 @@ async function handleGmailWebhook(c) {
     agentId,
     bytes: body.byteLength,
     contentType: c.req.header('content-type') ?? 'application/json',
-    bodyUtf8: toUtf8(bodyBuffer),
-    bodyBase64: bodyBuffer.toString('base64'),
+    bodyPreview: previewText(toUtf8(bodyBuffer)),
   });
 
   const controller = new AbortController();
@@ -642,8 +671,7 @@ async function handleGmailWebhook(c) {
       targetUrl: appConfig.forwardUrl,
       bytes: body.byteLength,
       contentType: c.req.header('content-type') ?? 'application/json',
-      bodyUtf8: toUtf8(bodyBuffer),
-      bodyBase64: bodyBuffer.toString('base64'),
+      bodyPreview: previewText(toUtf8(bodyBuffer)),
     });
 
     const upstream = await fetch(appConfig.forwardUrl, {
