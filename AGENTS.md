@@ -84,7 +84,6 @@ Each app forwards to OpenClaw with a fixed set of hook parameters. These are def
 - `deliver: false` — queued silently, no immediate notification
 
 **github** (`POST /v1/webhooks/apps/github/:repository`):
-- `agentId: github` — routes into the github hook worker
 - `sessionKey` comes from `apps.github.repositories.<repository>.sessionKey`
 - `wakeMode: now` — agent wakes immediately
 - `deliver: true` — push notification to process event now
