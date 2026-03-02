@@ -24,7 +24,7 @@ apps:
 
   # github is optional — omit to disable the route
   # Webhook URL format per repository:
-  #   /v1/webhooks/github/<repository>
+  #   /v1/webhooks/apps/github/<repository>
   github:
     targetAgent: tashi
     repositories:

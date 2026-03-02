@@ -83,7 +83,7 @@ Each app forwards to OpenClaw with a fixed set of hook parameters. These are def
 - `wakeMode: next-heartbeat` — processed at the next heartbeat, not urgently
 - `deliver: false` — queued silently, no immediate notification
 
-**github** (`POST /v1/webhooks/github/:repo`):
+**github** (`POST /v1/webhooks/apps/github/:repository`):
 - `sessionKey` comes from `apps.github.repositories.<repository>.sessionKey`
 - `wakeMode: now` — agent wakes immediately
 - `deliver: true` — push notification to process event now

@@ -11,7 +11,7 @@ Hono service for `api.namche.ai`.
 ## Current Endpoints
 
 - `POST /v1/webhooks/apps/krisp`
-- `POST /v1/webhooks/github/:repo` (optional, GitHub webhooks)
+- `POST /v1/webhooks/apps/github/:repository` (optional, GitHub webhooks)
 - `POST /v1/webhooks/agents/:agentId/webform/:formId`
 - `POST /v1/webhooks/agents/:agentId/gmail` (optional, Gmail Pub/Sub push)
 
@@ -80,12 +80,12 @@ Optional route — only active if `apps.github` is present in config.
 
 Incoming endpoint:
 
-- `POST /v1/webhooks/github/:repo`
+- `POST /v1/webhooks/apps/github/:repository`
 - auth: GitHub HMAC signature (`X-Hub-Signature-256`) using per-repo webhook secret
 
 Routing model:
 
-- `:repo` from the URL must exist in `apps.github.repositories`
+- `:repository` from the URL must exist in `apps.github.repositories`
 - each repository has its own `webhookSecret` and `sessionKey`
 - all mapped repositories forward to `apps.github.targetAgent`
 
