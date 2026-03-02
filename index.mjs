@@ -22,7 +22,7 @@ const APP_DEFINITIONS = {
     sessionKey: 'hook:notetaker:krisp',
   },
   github: {
-    path: '/v1/webhooks/apps/github/:repository',
+    path: '/v1/webhooks/github/:repo',
   },
   gmail: {
     path: '/v1/webhooks/agents/:agentId/gmail',
@@ -424,7 +424,7 @@ function verifyGithubSignature(rawBody, signatureHeader, webhookSecret) {
 
 async function handleGithubWebhook(c) {
   const path = new URL(c.req.url).pathname;
-  const repository = String(c.req.param('repository') ?? '').trim();
+  const repository = String(c.req.param('repo') ?? '').trim();
   const appConfig = config.apps.github;
 
   if (!appConfig) {
