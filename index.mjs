@@ -31,6 +31,8 @@ const APP_DEFINITIONS = {
 };
 
 // webform route — generic, formId from URL path
+const WEBFORM_PATH = '/v1/webhooks/agents/:agentId/webform/:formId';
+const ROOT_NAMES = ['krisp', 'github', 'webform', 'gmail'];
 
 const rawConfig = loadConfig(configPath);
 const config = normalizeConfig(rawConfig);
@@ -109,10 +111,11 @@ app.use('/v1/webhooks/agents/*', cors({
 }));
 
 app.get('/healthz', (c) => {
-  const routes = [
-    ...Object.values(APP_DEFINITIONS).map((def) => def.path),
-    '/v1/webhooks/agents/:agentId/webform/:formId',
-  ];
+  const routes = [];
+  if (config.roots.krisp) routes.push(APP_DEFINITIONS.krisp.path);
+  if (config.roots.github) routes.push(APP_DEFINITIONS.github.path);
+  if (config.roots.webform) routes.push(WEBFORM_PATH);
+  if (config.roots.gmail) routes.push(APP_DEFINITIONS.gmail.path);
 
   return c.json({
     ok: true,
@@ -120,16 +123,17 @@ app.get('/healthz', (c) => {
     configPath,
     logLevel: configuredLogLevel,
     apps: Object.keys(APP_DEFINITIONS),
+    roots: config.roots,
     agents: Object.keys(config.agents),
     webformAllowedOrigins: config.webformAllowedOrigins,
     routes,
   });
 });
 
-app.post(APP_DEFINITIONS.krisp.path, handleKrispWebhook);
-app.post(APP_DEFINITIONS.github.path, handleGithubWebhook);
-app.post('/v1/webhooks/agents/:agentId/webform/:formId', handleWebformWebhook);
-app.post('/v1/webhooks/agents/:agentId/gmail', handleGmailWebhook);
+if (config.roots.krisp) app.post(APP_DEFINITIONS.krisp.path, handleKrispWebhook);
+if (config.roots.github) app.post(APP_DEFINITIONS.github.path, handleGithubWebhook);
+if (config.roots.webform) app.post(WEBFORM_PATH, handleWebformWebhook);
+if (config.roots.gmail) app.post(APP_DEFINITIONS.gmail.path, handleGmailWebhook);
 
 app.post('/v1/webhooks/apps/*', (c) => {
   log('warn', `[api-proxy] invalid_path family=apps path=${new URL(c.req.url).pathname}`);
@@ -168,6 +172,7 @@ function normalizeConfig(raw) {
   const listen = raw.listen ?? {};
   const agents = raw.agents ?? {};
   const apps = raw.apps ?? {};
+  const roots = raw.roots ?? {};
   const webformAllowedOrigins = Array.isArray(raw.WEBFORM_ALLOWED_ORIGINS)
     ? raw.WEBFORM_ALLOWED_ORIGINS
     : ['https://tashi.namche.ai'];
@@ -178,6 +183,22 @@ function normalizeConfig(raw) {
 
   if (!apps || typeof apps !== 'object') {
     throw new Error('[api-proxy] Config must define apps object');
+  }
+  if (!roots || typeof roots !== 'object' || Array.isArray(roots)) {
+    throw new Error('[api-proxy] roots must be an object');
+  }
+
+  const normalizedRoots = {};
+  for (const rootName of ROOT_NAMES) {
+    const rawValue = roots[rootName];
+    if (rawValue === undefined) {
+      normalizedRoots[rootName] = true;
+      continue;
+    }
+    if (typeof rawValue !== 'boolean') {
+      throw new Error(`[api-proxy] roots.${rootName} must be a boolean`);
+    }
+    normalizedRoots[rootName] = rawValue;
   }
 
   const normalizedWebformAllowedOrigins = webformAllowedOrigins
@@ -214,6 +235,8 @@ function normalizeConfig(raw) {
   const normalizedApps = {};
   for (const [appId, appDef] of Object.entries(APP_DEFINITIONS)) {
     const appConfig = apps[appId];
+
+    if (!normalizedRoots[appId]) continue;
 
     // github is optional — only active when present in config
     if (appId === 'github') {
@@ -295,6 +318,7 @@ function normalizeConfig(raw) {
       port: Number(listen.port ?? 3000),
     },
     logLevel: String(raw.logLevel ?? 'info').toLowerCase(),
+    roots: normalizedRoots,
     webformAllowedOrigins: normalizedWebformAllowedOrigins,
     agents: normalizedAgents,
     apps: normalizedApps,

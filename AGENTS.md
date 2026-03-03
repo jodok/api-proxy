@@ -53,6 +53,7 @@ Do not deploy app source into nginx web root (`/var/www/html`).
 
 Hardwired app handlers in code (currently `krisp`, optional `github`, optional `gmail`) use YAML config for wiring and credentials:
 
+- `roots.krisp` / `roots.github` / `roots.webform` / `roots.gmail` (optional boolean route toggles, default `true`)
 - `WEBFORM_ALLOWED_ORIGINS`
 - `agents.<shortname>.url`
 - `agents.<shortname>.openclawHooksToken`
@@ -62,7 +63,7 @@ Hardwired app handlers in code (currently `krisp`, optional `github`, optional `
 - `apps.github.webhookSecret`
 - `apps.github.sessionKey`
 
-No enable/disable flags and no timeout config knobs.
+Route toggles are supported via `roots.*`; timeout config knobs are still not exposed.
 
 ## OpenClaw Hook Parameters
 

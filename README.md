@@ -26,6 +26,11 @@ Current config shape:
 
 - `listen` (`host`, `port`)
 - `logLevel` (`error`, `warn`, `info`, `debug`)
+- `roots` (optional boolean toggles for route roots, default `true`)
+  - `roots.krisp`
+  - `roots.github`
+  - `roots.webform`
+  - `roots.gmail`
 - `WEBFORM_ALLOWED_ORIGINS` (array of allowed browser origins for `/v1/webhooks/agents/*`)
 - `agents`:
   - keyed by shortname (for example `tashi`)
@@ -44,6 +49,12 @@ Current config shape:
 See:
 
 - `docs/config.yaml.example`
+
+Root toggle behavior:
+
+- disabled roots are not registered
+- requests to disabled paths fall through to wildcard handlers and return `invalid_path`
+- when `roots.github` or `roots.gmail` is `false`, their `apps.*` config blocks are not required
 
 ## Krisp Forwarding
 

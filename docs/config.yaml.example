@@ -3,6 +3,14 @@ listen:
   port: 3000
 
 logLevel: info
+roots:
+  krisp: true
+  github: true
+  webform: true
+  gmail: true
+  # Example: disable Gmail proxy without removing apps.gmail config
+  # gmail: false
+
 WEBFORM_ALLOWED_ORIGINS:
   - https://tashi.namche.ai
   # add any other origins that host webforms
