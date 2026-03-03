@@ -11,7 +11,7 @@ Hono service for `api.namche.ai`.
 ## Current Endpoints
 
 - `POST /v1/webhooks/apps/krisp`
-- `POST /v1/webhooks/apps/github/:repository` (optional, GitHub webhooks)
+- `POST /v1/webhooks/apps/github/:owner/:repo` (optional, GitHub webhooks)
 - `POST /v1/webhooks/agents/:agentId/webform/:formId`
 - `POST /v1/webhooks/agents/:agentId/gmail` (optional, Gmail Pub/Sub push)
 
@@ -38,8 +38,8 @@ Current config shape:
     - `krisp.incomingAuthorization` (full Authorization header value)
     - `krisp.targetAgent` (agent shortname)
     - `github.targetAgent` (agent shortname)
-    - `github.repositories.<repository>.webhookSecret`
-    - `github.repositories.<repository>.sessionKey`
+    - `github.webhookSecret`
+    - `github.sessionKey`
 
 See:
 
@@ -80,21 +80,21 @@ Optional route — only active if `apps.github` is present in config.
 
 Incoming endpoint:
 
-- `POST /v1/webhooks/apps/github/:repository`
-- auth: GitHub HMAC signature (`X-Hub-Signature-256`) using per-repo webhook secret
+- `POST /v1/webhooks/apps/github/:owner/:repo`
+- auth: GitHub HMAC signature (`X-Hub-Signature-256`) using `apps.github.webhookSecret`
 
 Routing model:
 
-- `:repository` from the URL must exist in `apps.github.repositories`
-- each repository has its own `webhookSecret` and `sessionKey`
-- all mapped repositories forward to `apps.github.targetAgent`
+- `:owner` and `:repo` are validated and forwarded as metadata
+- all events forward to `apps.github.targetAgent`
+- all events use one configured session key: `apps.github.sessionKey`
 
 Forwarded payload:
 
 ```json
 {
-  "name": "github:<repository>",
-  "message": "{\"source\":\"github\",\"repository\":\"<repository>\",\"event\":\"<x-github-event>\",\"action\":\"<payload.action>\",\"delivery\":\"<x-github-delivery>\",\"payload\":{...}}",
+  "name": "github:<owner>/<repo>",
+  "message": "{\"source\":\"github\",\"owner\":\"<owner>\",\"repo\":\"<repo>\",\"repository\":\"<owner>/<repo>\",\"event\":\"<x-github-event>\",\"action\":\"<payload.action>\",\"delivery\":\"<x-github-delivery>\",\"payload\":{...}}",
   "sessionKey": "agent:main:discord:channel:<DISCORD_CHANNEL_ID>",
   "wakeMode": "now",
   "deliver": true
@@ -107,13 +107,8 @@ Config:
 apps:
   github:
     targetAgent: tashi
-    repositories:
-      namche.ai:
-        webhookSecret: <GITHUB_WEBHOOK_SECRET_NAMCHE_AI>
-        sessionKey: agent:main:discord:channel:<DISCORD_CHANNEL_ID_NAMCHE_AI>
-      api-proxy:
-        webhookSecret: <GITHUB_WEBHOOK_SECRET_API_PROXY>
-        sessionKey: agent:main:discord:channel:<DISCORD_CHANNEL_ID_API_PROXY>
+    webhookSecret: <GITHUB_WEBHOOK_SECRET>
+    sessionKey: agent:main:discord:channel:<DISCORD_CHANNEL_ID>
 ```
 
 ## Webform Forwarding

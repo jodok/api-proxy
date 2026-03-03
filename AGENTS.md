@@ -59,8 +59,8 @@ Hardwired app handlers in code (currently `krisp`, optional `github`, optional `
 - `apps.krisp.incomingAuthorization`
 - `apps.krisp.targetAgent`
 - `apps.github.targetAgent`
-- `apps.github.repositories.<repository>.webhookSecret`
-- `apps.github.repositories.<repository>.sessionKey`
+- `apps.github.webhookSecret`
+- `apps.github.sessionKey`
 
 No enable/disable flags and no timeout config knobs.
 
@@ -83,8 +83,8 @@ Each app forwards to OpenClaw with a fixed set of hook parameters. These are def
 - `wakeMode: next-heartbeat` — processed at the next heartbeat, not urgently
 - `deliver: false` — queued silently, no immediate notification
 
-**github** (`POST /v1/webhooks/apps/github/:repository`):
-- `sessionKey` comes from `apps.github.repositories.<repository>.sessionKey`
+**github** (`POST /v1/webhooks/apps/github/:owner/:repo`):
+- `sessionKey` comes from `apps.github.sessionKey`
 - `wakeMode: now` — agent wakes immediately
 - `deliver: true` — push notification to process event now
 
