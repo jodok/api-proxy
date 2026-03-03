@@ -14,6 +14,8 @@ const app = new Hono();
 const DEFAULT_CONFIG_PATH = '/etc/api-proxy/config.yaml';
 const configPath = process.env.CONFIG_PATH ?? DEFAULT_CONFIG_PATH;
 const FORWARD_TIMEOUT_MS = 15000;
+const DEFAULT_GITHUB_SESSION_KEY = 'agent:main:discord:channel:1477691287313584304';
+const githubSessionKey = process.env.GITHUB_SESSION_KEY ?? DEFAULT_GITHUB_SESSION_KEY;
 
 const APP_DEFINITIONS = {
   krisp: {
@@ -22,7 +24,7 @@ const APP_DEFINITIONS = {
     sessionKey: 'hook:notetaker:krisp',
   },
   github: {
-    path: '/v1/webhooks/apps/github/:repository',
+    path: '/v1/webhooks/apps/github/:owner/:repo',
   },
   gmail: {
     path: '/v1/webhooks/agents/:agentId/gmail',
@@ -198,41 +200,12 @@ function normalizeConfig(raw) {
         throw new Error(`[api-proxy] App 'github' references unknown agent '${targetAgent}'`);
       }
 
-      const repositories = appConfig.repositories ?? {};
-      if (!repositories || typeof repositories !== 'object' || Array.isArray(repositories)) {
-        throw new Error(`[api-proxy] App 'github' repositories must be an object`);
+      const webhookSecret = String(appConfig.webhookSecret ?? '').trim();
+      if (!webhookSecret) {
+        throw new Error(`[api-proxy] App 'github' missing webhookSecret`);
       }
 
-      const normalizedRepositories = {};
-      for (const [repository, repoConfig] of Object.entries(repositories)) {
-        const repoName = String(repository ?? '').trim();
-        if (!repoName) {
-          throw new Error('[api-proxy] App \'github\' repository key must be non-empty');
-        }
-
-        if (!repoConfig || typeof repoConfig !== 'object') {
-          throw new Error(`[api-proxy] App 'github' repository '${repoName}' config must be an object`);
-        }
-
-        const webhookSecret = String(repoConfig.webhookSecret ?? '').trim();
-        const sessionKey = String(repoConfig.sessionKey ?? '').trim();
-
-        if (!webhookSecret) {
-          throw new Error(`[api-proxy] App 'github' repository '${repoName}' missing webhookSecret`);
-        }
-
-        if (!sessionKey) {
-          throw new Error(`[api-proxy] App 'github' repository '${repoName}' missing sessionKey`);
-        }
-
-        normalizedRepositories[repoName] = { webhookSecret, sessionKey };
-      }
-
-      if (Object.keys(normalizedRepositories).length === 0) {
-        throw new Error(`[api-proxy] App 'github' requires at least one repository mapping`);
-      }
-
-      normalizedApps.github = { ...appDef, targetAgent, repositories: normalizedRepositories };
+      normalizedApps.github = { ...appDef, targetAgent, webhookSecret };
       continue;
     }
 
@@ -403,7 +376,7 @@ async function handleKrispWebhook(c) {
   }
 }
 
-function isValidRepositorySlug(value) {
+function isValidGithubPathSegment(value) {
   return /^[A-Za-z0-9._-]{1,200}$/.test(value);
 }
 
@@ -424,7 +397,8 @@ function verifyGithubSignature(rawBody, signatureHeader, webhookSecret) {
 
 async function handleGithubWebhook(c) {
   const path = new URL(c.req.url).pathname;
-  const repository = String(c.req.param('repository') ?? '').trim();
+  const owner = String(c.req.param('owner') ?? '').trim();
+  const repo = String(c.req.param('repo') ?? '').trim();
   const appConfig = config.apps.github;
 
   if (!appConfig) {
@@ -432,23 +406,17 @@ async function handleGithubWebhook(c) {
     return c.json({ ok: false, error: 'not_configured' }, 404);
   }
 
-  if (!repository || !isValidRepositorySlug(repository)) {
-    log('warn', `[api-proxy] invalid_repository path=${path} repository=${repository || 'none'}`);
+  if (!owner || !isValidGithubPathSegment(owner) || !repo || !isValidGithubPathSegment(repo)) {
+    log('warn', `[api-proxy] invalid_repository path=${path} owner=${owner || 'none'} repo=${repo || 'none'}`);
     return c.json({ ok: false, error: 'invalid_repository' }, 400);
-  }
-
-  const repositoryConfig = appConfig.repositories[repository];
-  if (!repositoryConfig) {
-    log('warn', `[api-proxy] unknown_repository path=${path} repository=${repository}`);
-    return c.json({ ok: false, error: 'unknown_repository' }, 404);
   }
 
   const body = await c.req.arrayBuffer();
   const rawBody = Buffer.from(body);
   const signatureHeader = c.req.header('x-hub-signature-256');
 
-  if (!verifyGithubSignature(rawBody, signatureHeader, repositoryConfig.webhookSecret)) {
-    log('warn', `[api-proxy] unauthorized app=github repository=${repository} reason=signature_invalid`);
+  if (!verifyGithubSignature(rawBody, signatureHeader, appConfig.webhookSecret)) {
+    log('warn', `[api-proxy] unauthorized app=github owner=${owner} repo=${repo} reason=signature_invalid`);
     return c.json({ ok: false, error: 'unauthorized' }, 401);
   }
 
@@ -470,11 +438,12 @@ async function handleGithubWebhook(c) {
   logDebugPayload('incoming_payload', {
     app: 'github',
     path,
-    repository,
+    owner,
+    repo,
     event,
     action,
     delivery,
-    sessionKey: repositoryConfig.sessionKey,
+    sessionKey: githubSessionKey,
     bytes: body.byteLength,
     bodyUtf8: rawMessage,
   });
@@ -485,7 +454,9 @@ async function handleGithubWebhook(c) {
   try {
     const message = JSON.stringify({
       source: 'github',
-      repository,
+      owner,
+      repo,
+      repository: `${owner}/${repo}`,
       event,
       action,
       delivery,
@@ -493,16 +464,17 @@ async function handleGithubWebhook(c) {
     });
 
     const payload = JSON.stringify({
-      name: `github:${repository}`,
+      name: `github:${owner}/${repo}`,
       message,
-      sessionKey: repositoryConfig.sessionKey,
+      sessionKey: githubSessionKey,
       wakeMode: 'now',
       deliver: true,
     });
 
     logDebugPayload('forward_payload', {
       app: 'github',
-      repository,
+      owner,
+      repo,
       event,
       action,
       targetAgent: appConfig.targetAgent,
@@ -512,12 +484,12 @@ async function handleGithubWebhook(c) {
     const agentConfig = config.agents[appConfig.targetAgent];
     const upstream = await forwardToAgent(agentConfig, payload, controller.signal);
 
-    log('info', `[api-proxy] app=github repository=${repository} event=${event} action=${action || 'none'} agent=${appConfig.targetAgent} status=${upstream.status} bytes=${body.byteLength}`);
+    log('info', `[api-proxy] app=github owner=${owner} repo=${repo} event=${event} action=${action || 'none'} agent=${appConfig.targetAgent} sessionKey=${githubSessionKey} status=${upstream.status} bytes=${body.byteLength}`);
     return upstream;
   } catch (error) {
     const code = error?.name === 'AbortError' ? 504 : 502;
     const messageText = error instanceof Error ? error.message : 'forward request failed';
-    log('error', `[api-proxy] app=github repository=${repository} event=${event} error=${messageText}`);
+    log('error', `[api-proxy] app=github owner=${owner} repo=${repo} event=${event} error=${messageText}`);
     return c.json({ ok: false, error: messageText }, code);
   } finally {
     clearTimeout(timeout);
