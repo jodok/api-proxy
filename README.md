@@ -39,6 +39,7 @@ Current config shape:
     - `krisp.targetAgent` (agent shortname)
     - `github.targetAgent` (agent shortname)
     - `github.webhookSecret`
+    - `github.sessionKey`
 
 See:
 
@@ -86,9 +87,7 @@ Routing model:
 
 - `:owner` and `:repo` are validated and forwarded as metadata
 - all events forward to `apps.github.targetAgent`
-- all events use one fixed session key:
-  - default: `agent:main:discord:channel:1477691287313584304`
-  - optional override: `GITHUB_SESSION_KEY`
+- all events use one configured session key: `apps.github.sessionKey`
 
 Forwarded payload:
 
@@ -96,7 +95,7 @@ Forwarded payload:
 {
   "name": "github:<owner>/<repo>",
   "message": "{\"source\":\"github\",\"owner\":\"<owner>\",\"repo\":\"<repo>\",\"repository\":\"<owner>/<repo>\",\"event\":\"<x-github-event>\",\"action\":\"<payload.action>\",\"delivery\":\"<x-github-delivery>\",\"payload\":{...}}",
-  "sessionKey": "agent:main:discord:channel:1477691287313584304",
+  "sessionKey": "agent:main:discord:channel:<DISCORD_CHANNEL_ID>",
   "wakeMode": "now",
   "deliver": true
 }
@@ -109,6 +108,7 @@ apps:
   github:
     targetAgent: tashi
     webhookSecret: <GITHUB_WEBHOOK_SECRET>
+    sessionKey: agent:main:discord:channel:<DISCORD_CHANNEL_ID>
 ```
 
 ## Webform Forwarding

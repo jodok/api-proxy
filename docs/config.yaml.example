@@ -28,10 +28,7 @@ apps:
   github:
     targetAgent: tashi
     webhookSecret: <GITHUB_WEBHOOK_SECRET>
-    # Forwarding sessionKey is fixed in code:
-    #   agent:main:discord:channel:1477691287313584304
-    # Optional override via env var:
-    #   GITHUB_SESSION_KEY=agent:main:discord:channel:<DISCORD_CHANNEL_ID>
+    sessionKey: agent:main:discord:channel:<DISCORD_CHANNEL_ID>
 
   # webforms: handled generically via POST /v1/webhooks/agents/:agentId/webform/:formId
   # No config needed — any formId is accepted and forwarded as webform:<formId>

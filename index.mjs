@@ -14,8 +14,6 @@ const app = new Hono();
 const DEFAULT_CONFIG_PATH = '/etc/api-proxy/config.yaml';
 const configPath = process.env.CONFIG_PATH ?? DEFAULT_CONFIG_PATH;
 const FORWARD_TIMEOUT_MS = 15000;
-const DEFAULT_GITHUB_SESSION_KEY = 'agent:main:discord:channel:1477691287313584304';
-const githubSessionKey = process.env.GITHUB_SESSION_KEY ?? DEFAULT_GITHUB_SESSION_KEY;
 
 const APP_DEFINITIONS = {
   krisp: {
@@ -201,11 +199,15 @@ function normalizeConfig(raw) {
       }
 
       const webhookSecret = String(appConfig.webhookSecret ?? '').trim();
+      const sessionKey = String(appConfig.sessionKey ?? '').trim();
       if (!webhookSecret) {
         throw new Error(`[api-proxy] App 'github' missing webhookSecret`);
       }
+      if (!sessionKey) {
+        throw new Error(`[api-proxy] App 'github' missing sessionKey`);
+      }
 
-      normalizedApps.github = { ...appDef, targetAgent, webhookSecret };
+      normalizedApps.github = { ...appDef, targetAgent, webhookSecret, sessionKey };
       continue;
     }
 
@@ -443,7 +445,7 @@ async function handleGithubWebhook(c) {
     event,
     action,
     delivery,
-    sessionKey: githubSessionKey,
+    sessionKey: appConfig.sessionKey,
     bytes: body.byteLength,
     bodyUtf8: rawMessage,
   });
@@ -466,7 +468,7 @@ async function handleGithubWebhook(c) {
     const payload = JSON.stringify({
       name: `github:${owner}/${repo}`,
       message,
-      sessionKey: githubSessionKey,
+      sessionKey: appConfig.sessionKey,
       wakeMode: 'now',
       deliver: true,
     });
@@ -484,7 +486,7 @@ async function handleGithubWebhook(c) {
     const agentConfig = config.agents[appConfig.targetAgent];
     const upstream = await forwardToAgent(agentConfig, payload, controller.signal);
 
-    log('info', `[api-proxy] app=github owner=${owner} repo=${repo} event=${event} action=${action || 'none'} agent=${appConfig.targetAgent} sessionKey=${githubSessionKey} status=${upstream.status} bytes=${body.byteLength}`);
+    log('info', `[api-proxy] app=github owner=${owner} repo=${repo} event=${event} action=${action || 'none'} agent=${appConfig.targetAgent} sessionKey=${appConfig.sessionKey} status=${upstream.status} bytes=${body.byteLength}`);
     return upstream;
   } catch (error) {
     const code = error?.name === 'AbortError' ? 504 : 502;

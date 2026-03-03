@@ -60,6 +60,7 @@ Hardwired app handlers in code (currently `krisp`, optional `github`, optional `
 - `apps.krisp.targetAgent`
 - `apps.github.targetAgent`
 - `apps.github.webhookSecret`
+- `apps.github.sessionKey`
 
 No enable/disable flags and no timeout config knobs.
 
@@ -83,7 +84,7 @@ Each app forwards to OpenClaw with a fixed set of hook parameters. These are def
 - `deliver: false` — queued silently, no immediate notification
 
 **github** (`POST /v1/webhooks/apps/github/:owner/:repo`):
-- `sessionKey` is fixed to `agent:main:discord:channel:1477691287313584304` (override with `GITHUB_SESSION_KEY`)
+- `sessionKey` comes from `apps.github.sessionKey`
 - `wakeMode: now` — agent wakes immediately
 - `deliver: true` — push notification to process event now
 
