@@ -32,7 +32,6 @@ const APP_DEFINITIONS = {
 
 // webform route — generic, formId from URL path
 const WEBFORM_PATH = '/v1/webhooks/agents/:agentId/webform/:formId';
-const ROOT_NAMES = ['krisp', 'github', 'webform', 'gmail'];
 
 const rawConfig = loadConfig(configPath);
 const config = normalizeConfig(rawConfig);
@@ -112,10 +111,10 @@ app.use('/v1/webhooks/agents/*', cors({
 
 app.get('/healthz', (c) => {
   const routes = [];
-  if (config.roots.krisp) routes.push(APP_DEFINITIONS.krisp.path);
-  if (config.roots.github) routes.push(APP_DEFINITIONS.github.path);
-  if (config.roots.webform) routes.push(WEBFORM_PATH);
-  if (config.roots.gmail) routes.push(APP_DEFINITIONS.gmail.path);
+  if (isAppRouteEnabled('krisp')) routes.push(APP_DEFINITIONS.krisp.path);
+  if (isAppRouteEnabled('github')) routes.push(APP_DEFINITIONS.github.path);
+  if (config.webform.enabled) routes.push(WEBFORM_PATH);
+  if (isAppRouteEnabled('gmail')) routes.push(APP_DEFINITIONS.gmail.path);
 
   return c.json({
     ok: true,
@@ -123,17 +122,22 @@ app.get('/healthz', (c) => {
     configPath,
     logLevel: configuredLogLevel,
     apps: Object.keys(APP_DEFINITIONS),
-    roots: config.roots,
+    routeToggles: {
+      krisp: isAppRouteEnabled('krisp'),
+      github: isAppRouteEnabled('github'),
+      webform: config.webform.enabled,
+      gmail: isAppRouteEnabled('gmail'),
+    },
     agents: Object.keys(config.agents),
     webformAllowedOrigins: config.webformAllowedOrigins,
     routes,
   });
 });
 
-if (config.roots.krisp) app.post(APP_DEFINITIONS.krisp.path, handleKrispWebhook);
-if (config.roots.github) app.post(APP_DEFINITIONS.github.path, handleGithubWebhook);
-if (config.roots.webform) app.post(WEBFORM_PATH, handleWebformWebhook);
-if (config.roots.gmail) app.post(APP_DEFINITIONS.gmail.path, handleGmailWebhook);
+if (isAppRouteEnabled('krisp')) app.post(APP_DEFINITIONS.krisp.path, handleKrispWebhook);
+if (isAppRouteEnabled('github')) app.post(APP_DEFINITIONS.github.path, handleGithubWebhook);
+if (config.webform.enabled) app.post(WEBFORM_PATH, handleWebformWebhook);
+if (isAppRouteEnabled('gmail')) app.post(APP_DEFINITIONS.gmail.path, handleGmailWebhook);
 
 app.post('/v1/webhooks/apps/*', (c) => {
   log('warn', `[api-proxy] invalid_path family=apps path=${new URL(c.req.url).pathname}`);
@@ -172,7 +176,7 @@ function normalizeConfig(raw) {
   const listen = raw.listen ?? {};
   const agents = raw.agents ?? {};
   const apps = raw.apps ?? {};
-  const roots = raw.roots ?? {};
+  const webform = raw.webform ?? {};
   const webformAllowedOrigins = Array.isArray(raw.WEBFORM_ALLOWED_ORIGINS)
     ? raw.WEBFORM_ALLOWED_ORIGINS
     : ['https://tashi.namche.ai'];
@@ -184,21 +188,13 @@ function normalizeConfig(raw) {
   if (!apps || typeof apps !== 'object') {
     throw new Error('[api-proxy] Config must define apps object');
   }
-  if (!roots || typeof roots !== 'object' || Array.isArray(roots)) {
-    throw new Error('[api-proxy] roots must be an object');
+  if (!webform || typeof webform !== 'object' || Array.isArray(webform)) {
+    throw new Error('[api-proxy] webform must be an object');
   }
 
-  const normalizedRoots = {};
-  for (const rootName of ROOT_NAMES) {
-    const rawValue = roots[rootName];
-    if (rawValue === undefined) {
-      normalizedRoots[rootName] = true;
-      continue;
-    }
-    if (typeof rawValue !== 'boolean') {
-      throw new Error(`[api-proxy] roots.${rootName} must be a boolean`);
-    }
-    normalizedRoots[rootName] = rawValue;
+  const webformEnabled = webform.enabled ?? true;
+  if (typeof webformEnabled !== 'boolean') {
+    throw new Error('[api-proxy] webform.enabled must be a boolean');
   }
 
   const normalizedWebformAllowedOrigins = webformAllowedOrigins
@@ -236,13 +232,20 @@ function normalizeConfig(raw) {
   for (const [appId, appDef] of Object.entries(APP_DEFINITIONS)) {
     const appConfig = apps[appId];
 
-    if (!normalizedRoots[appId]) continue;
-
     // github is optional — only active when present in config
     if (appId === 'github') {
       if (!appConfig) continue;
       if (typeof appConfig !== 'object') {
         throw new Error(`[api-proxy] App 'github' config must be an object`);
+      }
+
+      const enabled = appConfig.enabled ?? true;
+      if (typeof enabled !== 'boolean') {
+        throw new Error(`[api-proxy] App 'github' enabled must be a boolean`);
+      }
+      if (!enabled) {
+        normalizedApps.github = { ...appDef, enabled: false };
+        continue;
       }
 
       const targetAgent = String(appConfig.targetAgent ?? '').trim();
@@ -260,7 +263,7 @@ function normalizeConfig(raw) {
         throw new Error(`[api-proxy] App 'github' missing sessionKey`);
       }
 
-      normalizedApps.github = { ...appDef, targetAgent, webhookSecret, sessionKey };
+      normalizedApps.github = { ...appDef, enabled: true, targetAgent, webhookSecret, sessionKey };
       continue;
     }
 
@@ -269,6 +272,15 @@ function normalizeConfig(raw) {
       if (!appConfig) continue;
       if (typeof appConfig !== 'object') {
         throw new Error(`[api-proxy] App 'gmail' config must be an object`);
+      }
+
+      const enabled = appConfig.enabled ?? true;
+      if (typeof enabled !== 'boolean') {
+        throw new Error(`[api-proxy] App 'gmail' enabled must be a boolean`);
+      }
+      if (!enabled) {
+        normalizedApps.gmail = { ...appDef, enabled: false };
+        continue;
       }
 
       const oidcEmail = String(appConfig.oidcEmail ?? '').trim();
@@ -282,12 +294,24 @@ function normalizeConfig(raw) {
         throw new Error(`[api-proxy] App 'gmail' references unknown agent '${targetAgent}'`);
       }
 
-      normalizedApps.gmail = { ...appDef, oidcEmail, targetAgent, forwardUrl };
+      normalizedApps.gmail = { ...appDef, enabled: true, oidcEmail, targetAgent, forwardUrl };
       continue;
     }
 
     if (!appConfig || typeof appConfig !== 'object') {
       throw new Error(`[api-proxy] App '${appId}' config is required`);
+    }
+
+    const enabled = appConfig.enabled ?? true;
+    if (typeof enabled !== 'boolean') {
+      throw new Error(`[api-proxy] App '${appId}' enabled must be a boolean`);
+    }
+    if (!enabled) {
+      normalizedApps[appId] = {
+        ...appDef,
+        enabled: false,
+      };
+      continue;
     }
 
     const incomingAuthorization = String(appConfig.incomingAuthorization ?? '').trim();
@@ -307,6 +331,7 @@ function normalizeConfig(raw) {
 
     normalizedApps[appId] = {
       ...appDef,
+      enabled: true,
       incomingAuthorization,
       targetAgent,
     };
@@ -318,11 +343,18 @@ function normalizeConfig(raw) {
       port: Number(listen.port ?? 3000),
     },
     logLevel: String(raw.logLevel ?? 'info').toLowerCase(),
-    roots: normalizedRoots,
+    webform: {
+      enabled: webformEnabled,
+    },
     webformAllowedOrigins: normalizedWebformAllowedOrigins,
     agents: normalizedAgents,
     apps: normalizedApps,
   };
+}
+
+function isAppRouteEnabled(appId) {
+  const appConfig = config.apps[appId];
+  return Boolean(appConfig && appConfig.enabled !== false);
 }
 
 function buildHooksUrl(baseUrl) {

@@ -3,13 +3,10 @@ listen:
   port: 3000
 
 logLevel: info
-roots:
-  krisp: true
-  github: true
-  webform: true
-  gmail: true
-  # Example: disable Gmail proxy without removing apps.gmail config
-  # gmail: false
+webform:
+  enabled: true
+  # set false to disable route:
+  # POST /v1/webhooks/agents/:agentId/webform/:formId
 
 WEBFORM_ALLOWED_ORIGINS:
   - https://tashi.namche.ai
@@ -22,6 +19,7 @@ agents:
 
 apps:
   krisp:
+    enabled: true
     incomingAuthorization: Bearer <KRISP_AUTHORIZATION>
     targetAgent: tashi
     # OpenClaw hook parameters (hardwired in code, documented here for reference):
@@ -34,6 +32,7 @@ apps:
   # Webhook URL format:
   #   /v1/webhooks/apps/github/<owner>/<repo>
   github:
+    enabled: true
     targetAgent: tashi
     webhookSecret: <GITHUB_WEBHOOK_SECRET>
     sessionKey: agent:main:discord:channel:<DISCORD_CHANNEL_ID>
@@ -47,6 +46,7 @@ apps:
 
   # gmail is optional — omit to disable the route
   gmail:
+    enabled: true  # set false to disable Gmail proxy route without removing this block
     oidcEmail: <SERVICE_ACCOUNT>@<PROJECT>.iam.gserviceaccount.com  # expected GCP SA in OIDC JWT
     targetAgent: tashi
     forwardUrl: https://tashi.silverside-mermaid.ts.net/gmail-pubsub?token=<GOG_SERVE_TOKEN>
