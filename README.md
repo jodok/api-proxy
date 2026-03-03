@@ -27,6 +27,7 @@ Current config shape:
 - `listen` (`host`, `port`)
 - `logLevel` (`error`, `warn`, `info`, `debug`)
 - `WEBFORM_ALLOWED_ORIGINS` (array of allowed browser origins for `/v1/webhooks/agents/*`)
+- `webform.enabled` (optional boolean route toggle, default `true`)
 - `agents`:
   - keyed by shortname (for example `tashi`)
   - each agent defines:
@@ -37,13 +38,22 @@ Current config shape:
   - defines:
     - `krisp.incomingAuthorization` (full Authorization header value)
     - `krisp.targetAgent` (agent shortname)
+    - `krisp.enabled` (optional boolean route toggle, default `true`)
     - `github.targetAgent` (agent shortname)
     - `github.webhookSecret`
     - `github.sessionKey`
+    - `github.enabled` (optional boolean route toggle, default `true`)
+    - `gmail.enabled` (optional boolean route toggle, default `true`)
 
 See:
 
 - `docs/config.yaml.example`
+
+Route toggle behavior:
+
+- disabled routes are not registered
+- requests to disabled paths fall through to wildcard handlers and return `invalid_path`
+- when `apps.github.enabled` or `apps.gmail.enabled` is `false`, their required auth/target fields are not required
 
 ## Krisp Forwarding
 
@@ -76,7 +86,7 @@ Expected upstream response:
 
 ## GitHub Forwarding
 
-Optional route — only active if `apps.github` is present in config.
+Optional route — active when `apps.github` exists and `apps.github.enabled` is not `false`.
 
 Incoming endpoint:
 
@@ -106,6 +116,7 @@ Config:
 ```yaml
 apps:
   github:
+    enabled: true
     targetAgent: tashi
     webhookSecret: <GITHUB_WEBHOOK_SECRET>
     sessionKey: agent:main:discord:channel:<DISCORD_CHANNEL_ID>
@@ -132,7 +143,7 @@ Forwarded payload:
 
 ## Gmail Pub/Sub Forwarding
 
-Optional route — only active if `apps.gmail` is present in config.
+Optional route — active when `apps.gmail` exists and `apps.gmail.enabled` is not `false`.
 
 Incoming endpoint:
 
@@ -149,6 +160,7 @@ Config:
 ```yaml
 apps:
   gmail:
+    enabled: true
     oidcEmail: <SERVICE_ACCOUNT>@<PROJECT>.iam.gserviceaccount.com
     targetAgent: tashi
     forwardUrl: https://<tashi-tailscale-host>/gmail-pubsub?token=<GOG_SERVE_TOKEN>
