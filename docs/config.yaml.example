@@ -16,6 +16,9 @@ agents:
   tashi:
     url: https://tashi.silverside-mermaid.ts.net
     openclawHooksToken: Bearer <OPENCLAW_HOOKS_TOKEN_TASHI>
+  pema:
+    url: https://<pema-tailscale-host>
+    openclawHooksToken: Bearer <OPENCLAW_HOOKS_TOKEN_PEMA>
 
 apps:
   krisp:
@@ -45,8 +48,18 @@ apps:
   #   /v1/webhooks/agents/tashi/webform/contact
 
   # gmail is optional — omit to disable the route
+  # Each agent entry maps an agentId to its own oidcEmail + forwardUrl.
+  # The oidcEmail is the GCP service account expected in the Pub/Sub OIDC JWT.
+  # All agents can share one service account (same GCP project) or use separate ones.
   gmail:
     enabled: true  # set false to disable Gmail proxy route without removing this block
-    oidcEmail: <SERVICE_ACCOUNT>@<PROJECT>.iam.gserviceaccount.com  # expected GCP SA in OIDC JWT
-    targetAgent: tashi
-    forwardUrl: https://tashi.silverside-mermaid.ts.net/gmail-pubsub?token=<GOG_SERVE_TOKEN>
+    agents:
+      tashi:
+        oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
+        forwardUrl: https://tashi.silverside-mermaid.ts.net/gmail-pubsub?token=<GOG_SERVE_TOKEN_TASHI>
+      pema:
+        oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
+        forwardUrl: https://<pema-tailscale-host>/gmail-pubsub?token=<GOG_SERVE_TOKEN_PEMA>
+      # nima:
+      #   oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
+      #   forwardUrl: https://<nima-tailscale-host>/gmail-pubsub?token=<GOG_SERVE_TOKEN_NIMA>

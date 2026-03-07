@@ -44,6 +44,8 @@ Current config shape:
     - `github.sessionKey`
     - `github.enabled` (optional boolean route toggle, default `true`)
     - `gmail.enabled` (optional boolean route toggle, default `true`)
+    - `gmail.agents.<agentId>.oidcEmail` (GCP SA expected in OIDC JWT)
+    - `gmail.agents.<agentId>.forwardUrl` (target `gog gmail watch serve` URL)
 
 See:
 
@@ -145,14 +147,17 @@ Forwarded payload:
 
 Optional route — active when `apps.gmail` exists and `apps.gmail.enabled` is not `false`.
 
+Supports multiple agents, each with its own Gmail account and `gog gmail watch serve` endpoint.
+
 Incoming endpoint:
 
 - `POST /v1/webhooks/agents/:agentId/gmail`
 - auth: GCP Pub/Sub OIDC JWT (`Authorization: Bearer <jwt>`) — verified against Google's public keys
+- `:agentId` must match an entry in `apps.gmail.agents`
 
 Forwarded request:
 
-- `POST <apps.gmail.forwardUrl>` (raw Pub/Sub body, pass-through)
+- `POST <apps.gmail.agents.<agentId>.forwardUrl>` (raw Pub/Sub body, pass-through)
 - target is `gog gmail watch serve` on the agent host
 
 Config:
@@ -161,32 +166,43 @@ Config:
 apps:
   gmail:
     enabled: true
-    oidcEmail: <SERVICE_ACCOUNT>@<PROJECT>.iam.gserviceaccount.com
-    targetAgent: tashi
-    forwardUrl: https://<tashi-tailscale-host>/gmail-pubsub?token=<GOG_SERVE_TOKEN>
+    agents:
+      tashi:
+        oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
+        forwardUrl: https://<tashi-tailscale-host>/gmail-pubsub?token=<GOG_SERVE_TOKEN_TASHI>
+      pema:
+        oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
+        forwardUrl: https://<pema-tailscale-host>/gmail-pubsub?token=<GOG_SERVE_TOKEN_PEMA>
 ```
 
-GCP Pub/Sub subscription — create with OIDC auth (no token in URL):
+All agents can share one GCP service account (same project) or use separate ones per agent.
+
+GCP Pub/Sub setup — one topic, one subscription per agent:
 
 ```bash
-# 1. Create a dedicated service account for Pub/Sub push auth
+PROJECT_ID=<PROJECT_ID>
+SA=pubsub-push@${PROJECT_ID}.iam.gserviceaccount.com
+
+# 1. Create a shared service account for Pub/Sub push auth (once per project)
 gcloud iam service-accounts create pubsub-push \
   --display-name="Pub/Sub push auth" \
-  --project=<PROJECT_ID>
+  --project=${PROJECT_ID}
 
-# 2. Grant it permission to publish to the topic (so GCP accepts the OIDC token)
-gcloud pubsub topics add-iam-policy-binding <TOPIC> \
-  --member="serviceAccount:pubsub-push@<PROJECT_ID>.iam.gserviceaccount.com" \
-  --role="roles/pubsub.publisher"
+# 2. Create a topic (once per project)
+gcloud pubsub topics create gmail-hook --project=${PROJECT_ID}
 
-# 3. Update the push subscription with OIDC auth — clean URL, no token param
-gcloud pubsub subscriptions modify-push-config <SUBSCRIPTION> \
-  --push-endpoint="https://api.namche.ai/v1/webhooks/agents/tashi/gmail" \
-  --push-auth-service-account="pubsub-push@<PROJECT_ID>.iam.gserviceaccount.com"
-# audience defaults to the push endpoint URL — matches what the proxy verifies
+# 3. For each agent: create a push subscription pointing to its endpoint
+#    (audience defaults to the push endpoint URL — matches what the proxy verifies)
+for AGENT in tashi pema nima; do
+  gcloud pubsub subscriptions create gmail-watch-${AGENT} \
+    --topic=gmail-hook \
+    --push-endpoint="https://api.namche.ai/v1/webhooks/agents/${AGENT}/gmail" \
+    --push-auth-service-account="${SA}" \
+    --project=${PROJECT_ID}
+done
 ```
 
-Set `oidcEmail` in config to `pubsub-push@<PROJECT_ID>.iam.gserviceaccount.com`.
+Set `oidcEmail` per agent to `pubsub-push@<PROJECT_ID>.iam.gserviceaccount.com`.
 
 ## Local Run
 

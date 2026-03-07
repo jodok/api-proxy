@@ -283,18 +283,31 @@ function normalizeConfig(raw) {
         continue;
       }
 
-      const oidcEmail = String(appConfig.oidcEmail ?? '').trim();
-      const targetAgent = String(appConfig.targetAgent ?? '').trim();
-      const forwardUrl = String(appConfig.forwardUrl ?? '').trim();
-
-      if (!oidcEmail) throw new Error(`[api-proxy] App 'gmail' missing oidcEmail`);
-      if (!targetAgent) throw new Error(`[api-proxy] App 'gmail' missing targetAgent`);
-      if (!forwardUrl) throw new Error(`[api-proxy] App 'gmail' missing forwardUrl`);
-      if (!normalizedAgents[targetAgent]) {
-        throw new Error(`[api-proxy] App 'gmail' references unknown agent '${targetAgent}'`);
+      const agentsMap = appConfig.agents;
+      if (!agentsMap || typeof agentsMap !== 'object' || Array.isArray(agentsMap)) {
+        throw new Error(`[api-proxy] App 'gmail' requires an 'agents' map`);
       }
 
-      normalizedApps.gmail = { ...appDef, enabled: true, oidcEmail, targetAgent, forwardUrl };
+      const normalizedGmailAgents = {};
+      for (const [gmailAgentId, entry] of Object.entries(agentsMap)) {
+        if (!entry || typeof entry !== 'object') {
+          throw new Error(`[api-proxy] App 'gmail' agent '${gmailAgentId}' config must be an object`);
+        }
+        const oidcEmail = String(entry.oidcEmail ?? '').trim();
+        const forwardUrl = String(entry.forwardUrl ?? '').trim();
+        if (!oidcEmail) throw new Error(`[api-proxy] App 'gmail' agent '${gmailAgentId}' missing oidcEmail`);
+        if (!forwardUrl) throw new Error(`[api-proxy] App 'gmail' agent '${gmailAgentId}' missing forwardUrl`);
+        if (!normalizedAgents[gmailAgentId]) {
+          throw new Error(`[api-proxy] App 'gmail' references unknown agent '${gmailAgentId}'`);
+        }
+        normalizedGmailAgents[gmailAgentId] = { oidcEmail, forwardUrl };
+      }
+
+      if (Object.keys(normalizedGmailAgents).length === 0) {
+        throw new Error(`[api-proxy] App 'gmail' requires at least one agent entry`);
+      }
+
+      normalizedApps.gmail = { ...appDef, enabled: true, agents: normalizedGmailAgents };
       continue;
     }
 
@@ -650,7 +663,8 @@ async function handleGmailWebhook(c) {
     return c.json({ ok: false, error: 'not_configured' }, 404);
   }
 
-  if (agentId !== appConfig.targetAgent) {
+  const agentEntry = appConfig.agents?.[agentId];
+  if (!agentEntry) {
     log('warn', `[api-proxy] unknown_agent path=${path} agent=${agentId || 'none'}`);
     return c.json({ ok: false, error: 'unknown_agent' }, 404);
   }
@@ -669,7 +683,7 @@ async function handleGmailWebhook(c) {
       issuer: 'https://accounts.google.com',
       audience,
     });
-    if (payload.email !== appConfig.oidcEmail) {
+    if (payload.email !== agentEntry.oidcEmail) {
       log('warn', `[api-proxy] unauthorized app=gmail agent=${agentId} reason=email_mismatch got=${payload.email}`);
       return c.json({ ok: false, error: 'unauthorized' }, 401);
     }
@@ -695,13 +709,13 @@ async function handleGmailWebhook(c) {
   try {
     logDebugPayload('forward_payload', {
       app: 'gmail',
-      targetUrl: appConfig.forwardUrl,
+      targetUrl: agentEntry.forwardUrl,
       bytes: body.byteLength,
       contentType: c.req.header('content-type') ?? 'application/json',
       bodyPreview: previewText(toUtf8(bodyBuffer)),
     });
 
-    const upstream = await fetch(appConfig.forwardUrl, {
+    const upstream = await fetch(agentEntry.forwardUrl, {
       method: 'POST',
       headers: {
         'content-type': c.req.header('content-type') ?? 'application/json',
