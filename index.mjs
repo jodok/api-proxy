@@ -83,6 +83,7 @@ function buildForwardEnvelopeDebug(payload) {
 
   return {
     name: parsed.name ?? '',
+    agentId: parsed.agentId ?? '',
     sessionKey: parsed.sessionKey ?? '',
     wakeMode: parsed.wakeMode ?? '',
     deliver: parsed.deliver ?? '',
@@ -418,6 +419,7 @@ function authorizationMatches(provided, expected) {
 
 async function handleKrispWebhook(c) {
   const path = new URL(c.req.url).pathname;
+  const routeAgentId = String(c.req.param('agentId') ?? '').trim();
   const notetakerId = String(c.req.param('notetakerId') ?? '').trim();
   if (notetakerId !== 'krisp') {
     log('warn', `[api-proxy] invalid_notetaker app=krisp path=${path} notetaker_id=${notetakerId || 'none'}`);
@@ -446,6 +448,7 @@ async function handleKrispWebhook(c) {
   logDebugPayload('incoming_payload', {
     app: 'krisp',
     path,
+    routeAgentId,
     bytes: body.byteLength,
     bodyPreview: previewText(message),
   });
@@ -457,7 +460,7 @@ async function handleKrispWebhook(c) {
     const payload = JSON.stringify({
       name: APP_DEFINITIONS.krisp.payloadName,
       message,
-      agentId: 'notetaker',
+      agentId: routeAgentId || 'notetaker',
       sessionKey: APP_DEFINITIONS.krisp.sessionKey,
       wakeMode: 'next-heartbeat',
       deliver: false,
