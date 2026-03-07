@@ -18,7 +18,7 @@ const DEBUG_MESSAGE_PREVIEW_CHARS = 300;
 
 const APP_DEFINITIONS = {
   krisp: {
-    path: '/v1/webhooks/apps/krisp',
+    path: '/v1/webhooks/agents/:agentId/notetaker/:notetakerId',
     payloadName: 'notetaker:krisp',
     sessionKey: 'hook:notetaker:krisp',
   },
@@ -418,6 +418,12 @@ function authorizationMatches(provided, expected) {
 
 async function handleKrispWebhook(c) {
   const path = new URL(c.req.url).pathname;
+  const notetakerId = String(c.req.param('notetakerId') ?? '').trim();
+  if (notetakerId !== 'krisp') {
+    log('warn', `[api-proxy] invalid_notetaker app=krisp path=${path} notetaker_id=${notetakerId || 'none'}`);
+    return c.json({ ok: false, error: 'invalid_notetaker' }, 400);
+  }
+
   const appConfig = config.apps.krisp;
   const agentConfig = config.agents[appConfig.targetAgent];
 

@@ -10,7 +10,7 @@ Hono service for `api.namche.ai`.
 
 ## Current Endpoints
 
-- `POST /v1/webhooks/apps/krisp`
+- `POST /v1/webhooks/agents/:agentId/notetaker/:notetakerId` (currently `:notetakerId` = `krisp`)
 - `POST /v1/webhooks/apps/github/:owner/:repo` (optional, GitHub webhooks)
 - `POST /v1/webhooks/agents/:agentId/webform/:formId`
 - `POST /v1/webhooks/agents/:agentId/gmail` (optional, Gmail Pub/Sub push)
@@ -61,6 +61,7 @@ Route toggle behavior:
 
 Incoming check:
 
+- endpoint: `POST /v1/webhooks/agents/:agentId/notetaker/:notetakerId` (`:notetakerId` must be `krisp`)
 - request `Authorization` must exactly match `apps.krisp.incomingAuthorization`
 
 Forwarded request:
