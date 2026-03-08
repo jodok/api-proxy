@@ -75,7 +75,6 @@ Forwarded payload:
 {
   "name": "notetaker:krisp",
   "message": "<raw body string>",
-  "agentId": "<route :agentId>",
   "sessionKey": "hook:notetaker:krisp",
   "deliver": false,
   "wakeMode": "next-heartbeat"
