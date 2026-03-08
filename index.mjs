@@ -519,7 +519,7 @@ async function handleKrispWebhook(c) {
       name: APP_DEFINITIONS.krisp.payloadName,
       message,
       sessionKey: APP_DEFINITIONS.krisp.sessionKey,
-      wakeMode: 'next-heartbeat',
+      wakeMode: 'now',
       deliver: false,
     });
 
