@@ -37,7 +37,6 @@ Current config shape:
   - currently `krisp`, optional `github`, optional `gmail`
   - defines:
     - `krisp.agents.<agentId>.incomingAuthorization` (required per-agent auth by URL `:agentId`)
-    - `krisp.targetAgent` (agent shortname)
     - `krisp.enabled` (optional boolean route toggle, default `true`)
     - `github.targetAgent` (agent shortname)
     - `github.webhookSecret`
@@ -66,8 +65,8 @@ Incoming check:
 
 Forwarded request:
 
-- `POST <agents.<targetAgent>.url>/hooks/agent`
-- `Authorization: <agents.<targetAgent>.openclawHooksToken>`
+- `POST <agents.<agentId>.url>/hooks/agent`
+- `Authorization: <agents.<agentId>.openclawHooksToken>`
 - `Content-Type: application/json`
 
 Forwarded payload:
