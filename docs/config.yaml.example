@@ -29,7 +29,6 @@ apps:
         incomingAuthorization: Bearer <KRISP_AUTHORIZATION_TASHI>
       pema:
         incomingAuthorization: Bearer <KRISP_AUTHORIZATION_PEMA>
-    targetAgent: tashi
     # OpenClaw hook parameters (hardwired in code, documented here for reference):
     # agentId: <route :agentId>  — taken from incoming URL /agents/:agentId/...
     # sessionKey: hook:notetaker:krisp — routes into the Krisp notetaker hook session

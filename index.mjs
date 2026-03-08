@@ -247,14 +247,6 @@ function normalizeConfig(raw) {
         continue;
       }
 
-      const targetAgent = String(appConfig.targetAgent ?? '').trim();
-      if (!targetAgent) {
-        throw new Error(`[api-proxy] App 'krisp' missing targetAgent`);
-      }
-      if (!normalizedAgents[targetAgent]) {
-        throw new Error(`[api-proxy] App 'krisp' references unknown agent '${targetAgent}'`);
-      }
-
       const agentsMap = appConfig.agents;
       if (!agentsMap || typeof agentsMap !== 'object' || Array.isArray(agentsMap)) {
         throw new Error(`[api-proxy] App 'krisp' agents must be an object`);
@@ -286,7 +278,6 @@ function normalizeConfig(raw) {
       normalizedApps.krisp = {
         ...appDef,
         enabled: true,
-        targetAgent,
         agents: normalizedKrispAgents,
       };
 
@@ -487,11 +478,11 @@ async function handleKrispWebhook(c) {
   }
 
   const appConfig = config.apps.krisp;
-  const agentConfig = config.agents[appConfig.targetAgent];
+  const agentConfig = config.agents[routeAgentId];
   const routeAuthConfig = appConfig.agents?.[routeAgentId];
   const expectedAuthorization = routeAuthConfig?.incomingAuthorization;
 
-  if (!expectedAuthorization) {
+  if (!agentConfig || !expectedAuthorization) {
     log('warn', `[api-proxy] unknown_agent app=krisp path=${path} route_agent=${routeAgentId || 'none'}`);
     return c.json({ ok: false, error: 'unknown_agent' }, 404);
   }
@@ -535,17 +526,18 @@ async function handleKrispWebhook(c) {
 
     logDebugPayload('forward_payload', {
       app: 'krisp',
+      routeAgentId,
       ...buildForwardEnvelopeDebug(payload),
     });
 
     const upstream = await forwardToAgent(agentConfig, payload, controller.signal);
 
-    log('info', `[api-proxy] app=krisp agent=${appConfig.targetAgent} status=${upstream.status} bytes=${body.byteLength}`);
+    log('info', `[api-proxy] app=krisp agent=${routeAgentId} status=${upstream.status} bytes=${body.byteLength}`);
     return upstream;
   } catch (error) {
     const code = error?.name === 'AbortError' ? 504 : 502;
     const messageText = error instanceof Error ? error.message : 'forward request failed';
-    log('error', `[api-proxy] app=krisp agent=${appConfig.targetAgent} error=${messageText}`);
+    log('error', `[api-proxy] app=krisp agent=${routeAgentId} error=${messageText}`);
     return c.json({ ok: false, error: messageText }, code);
   } finally {
     clearTimeout(timeout);
