@@ -810,7 +810,7 @@ async function forwardToAgent(agentConfig, payload, signal) {
   const upstream = await fetch(url, {
     method: 'POST',
     headers: {
-      authorization: agentConfig.openclawHooksToken,
+      'x-openclaw-token': agentConfig.openclawHooksToken,
       'content-type': 'application/json',
       'x-api-proxy': 'api-proxy',
     },
