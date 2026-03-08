@@ -255,55 +255,40 @@ function normalizeConfig(raw) {
         throw new Error(`[api-proxy] App 'krisp' references unknown agent '${targetAgent}'`);
       }
 
-      const incomingAuthorization = String(appConfig.incomingAuthorization ?? '').trim();
       const agentsMap = appConfig.agents;
-      let normalizedKrispAgents;
-
-      if (agentsMap !== undefined) {
-        if (!agentsMap || typeof agentsMap !== 'object' || Array.isArray(agentsMap)) {
-          throw new Error(`[api-proxy] App 'krisp' agents must be an object`);
-        }
-
-        normalizedKrispAgents = {};
-        for (const [krispAgentId, entry] of Object.entries(agentsMap)) {
-          if (!entry || typeof entry !== 'object') {
-            throw new Error(`[api-proxy] App 'krisp' agent '${krispAgentId}' config must be an object`);
-          }
-          if (!normalizedAgents[krispAgentId]) {
-            throw new Error(`[api-proxy] App 'krisp' references unknown agent '${krispAgentId}'`);
-          }
-
-          const agentIncomingAuthorization = String(entry.incomingAuthorization ?? '').trim();
-          if (!agentIncomingAuthorization) {
-            throw new Error(`[api-proxy] App 'krisp' agent '${krispAgentId}' missing incomingAuthorization`);
-          }
-
-          normalizedKrispAgents[krispAgentId] = {
-            incomingAuthorization: agentIncomingAuthorization,
-          };
-        }
-
-        if (Object.keys(normalizedKrispAgents).length === 0) {
-          throw new Error(`[api-proxy] App 'krisp' agents requires at least one agent entry`);
-        }
+      if (!agentsMap || typeof agentsMap !== 'object' || Array.isArray(agentsMap)) {
+        throw new Error(`[api-proxy] App 'krisp' agents must be an object`);
       }
 
-      if (!incomingAuthorization && (!normalizedKrispAgents || Object.keys(normalizedKrispAgents).length === 0)) {
-        throw new Error(`[api-proxy] App 'krisp' requires incomingAuthorization or agents.<agentId>.incomingAuthorization`);
+      const normalizedKrispAgents = {};
+      for (const [krispAgentId, entry] of Object.entries(agentsMap)) {
+        if (!entry || typeof entry !== 'object') {
+          throw new Error(`[api-proxy] App 'krisp' agent '${krispAgentId}' config must be an object`);
+        }
+        if (!normalizedAgents[krispAgentId]) {
+          throw new Error(`[api-proxy] App 'krisp' references unknown agent '${krispAgentId}'`);
+        }
+
+        const agentIncomingAuthorization = String(entry.incomingAuthorization ?? '').trim();
+        if (!agentIncomingAuthorization) {
+          throw new Error(`[api-proxy] App 'krisp' agent '${krispAgentId}' missing incomingAuthorization`);
+        }
+
+        normalizedKrispAgents[krispAgentId] = {
+          incomingAuthorization: agentIncomingAuthorization,
+        };
+      }
+
+      if (Object.keys(normalizedKrispAgents).length === 0) {
+        throw new Error(`[api-proxy] App 'krisp' agents requires at least one agent entry`);
       }
 
       normalizedApps.krisp = {
         ...appDef,
         enabled: true,
         targetAgent,
+        agents: normalizedKrispAgents,
       };
-
-      if (incomingAuthorization) {
-        normalizedApps.krisp.incomingAuthorization = incomingAuthorization;
-      }
-      if (normalizedKrispAgents) {
-        normalizedApps.krisp.agents = normalizedKrispAgents;
-      }
 
       continue;
     }
@@ -504,7 +489,7 @@ async function handleKrispWebhook(c) {
   const appConfig = config.apps.krisp;
   const agentConfig = config.agents[appConfig.targetAgent];
   const routeAuthConfig = appConfig.agents?.[routeAgentId];
-  const expectedAuthorization = routeAuthConfig?.incomingAuthorization ?? appConfig.incomingAuthorization;
+  const expectedAuthorization = routeAuthConfig?.incomingAuthorization;
 
   if (!expectedAuthorization) {
     log('warn', `[api-proxy] unknown_agent app=krisp path=${path} route_agent=${routeAgentId || 'none'}`);
@@ -518,8 +503,7 @@ async function handleKrispWebhook(c) {
       const expectedScheme = getAuthScheme(expectedAuthorization);
       const providedLen = providedAuth ? providedAuth.trim().length : 0;
       const expectedLen = expectedAuthorization.trim().length;
-      const authScope = routeAuthConfig ? `agent:${routeAgentId}` : 'default';
-      log('debug', `[api-proxy] auth_mismatch app=krisp auth_scope=${authScope} provided_scheme=${providedScheme} expected_scheme=${expectedScheme} provided_len=${providedLen} expected_len=${expectedLen}`);
+      log('debug', `[api-proxy] auth_mismatch app=krisp auth_scope=agent:${routeAgentId} provided_scheme=${providedScheme} expected_scheme=${expectedScheme} provided_len=${providedLen} expected_len=${expectedLen}`);
     }
 
     log('warn', `[api-proxy] unauthorized app=krisp reason=authorization path=${path}`);

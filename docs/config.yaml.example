@@ -23,14 +23,12 @@ agents:
 apps:
   krisp:
     enabled: true
-    # Default auth for all Krisp routes unless an agent-specific override exists.
-    incomingAuthorization: Bearer <KRISP_AUTHORIZATION>
-    # Optional per-agent auth override, keyed by URL :agentId
-    # agents:
-    #   tashi:
-    #     incomingAuthorization: Bearer <KRISP_AUTHORIZATION_TASHI>
-    #   pema:
-    #     incomingAuthorization: Bearer <KRISP_AUTHORIZATION_PEMA>
+    # Required: auth per agentId in route /v1/webhooks/agents/:agentId/notetaker/krisp
+    agents:
+      tashi:
+        incomingAuthorization: Bearer <KRISP_AUTHORIZATION_TASHI>
+      pema:
+        incomingAuthorization: Bearer <KRISP_AUTHORIZATION_PEMA>
     targetAgent: tashi
     # OpenClaw hook parameters (hardwired in code, documented here for reference):
     # agentId: <route :agentId>  — taken from incoming URL /agents/:agentId/...
