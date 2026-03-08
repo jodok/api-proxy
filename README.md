@@ -37,6 +37,7 @@ Current config shape:
   - currently `krisp`, optional `github`, optional `gmail`
   - defines:
     - `krisp.incomingAuthorization` (full Authorization header value)
+    - `krisp.agents.<agentId>.incomingAuthorization` (optional per-agent override by URL `:agentId`)
     - `krisp.targetAgent` (agent shortname)
     - `krisp.enabled` (optional boolean route toggle, default `true`)
     - `github.targetAgent` (agent shortname)
@@ -62,7 +63,7 @@ Route toggle behavior:
 Incoming check:
 
 - endpoint: `POST /v1/webhooks/agents/:agentId/notetaker/:notetakerId` (`:notetakerId` must be `krisp`)
-- request `Authorization` must exactly match `apps.krisp.incomingAuthorization`
+- request `Authorization` must exactly match `apps.krisp.agents.<agentId>.incomingAuthorization` when set, otherwise `apps.krisp.incomingAuthorization`
 
 Forwarded request:
 
@@ -76,7 +77,7 @@ Forwarded payload:
 {
   "name": "notetaker:krisp",
   "message": "<raw body string>",
-  "agentId": "notetaker",
+  "agentId": "<route :agentId>",
   "sessionKey": "hook:notetaker:krisp",
   "deliver": false,
   "wakeMode": "next-heartbeat"
