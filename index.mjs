@@ -518,7 +518,7 @@ async function handleKrispWebhook(c) {
     const payload = JSON.stringify({
       name: APP_DEFINITIONS.krisp.payloadName,
       message,
-      agentId: routeAgentId || 'notetaker',
+      agentId: 'main',
       sessionKey: APP_DEFINITIONS.krisp.sessionKey,
       wakeMode: 'next-heartbeat',
       deliver: false,
