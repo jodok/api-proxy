@@ -13,6 +13,9 @@ WEBFORM_ALLOWED_ORIGINS:
   # add any other origins that host webforms
 
 agents:
+  main:
+    url: https://<main-tailscale-host>
+    openclawHooksToken: Bearer <OPENCLAW_HOOKS_TOKEN_MAIN>
   tashi:
     url: https://tashi.silverside-mermaid.ts.net
     openclawHooksToken: Bearer <OPENCLAW_HOOKS_TOKEN_TASHI>
@@ -23,6 +26,9 @@ agents:
 apps:
   krisp:
     enabled: true
+    # Optional: OpenClaw target agent for all Krisp forwards (defaults to 'main').
+    # This target must exist under top-level agents.
+    targetAgent: main
     # Required: auth per agentId in route /v1/webhooks/agents/:agentId/notetaker/krisp
     agents:
       tashi:
@@ -30,7 +36,7 @@ apps:
       pema:
         incomingAuthorization: Bearer <KRISP_AUTHORIZATION_PEMA>
     # OpenClaw hook parameters (hardwired in code, documented here for reference):
-    # agentId: main              — OpenClaw agent session id (fixed)
+    # agentId: main              — routed via apps.krisp.targetAgent (default: main)
     # sessionKey: hook:notetaker:krisp — routes into the Krisp notetaker hook session
     # wakeMode: now              — processed immediately
     # deliver: false             — queued silently; no immediate notification pushed
@@ -63,17 +69,17 @@ apps:
         accounts:
           primary:
             oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
-            forwardUrl: https://tashi.silverside-mermaid.ts.net:8441/gmail-pubsub?token=<GOG_SERVE_TOKEN_TASHI_PRIMARY>
+            forwardUrl: https://tashi.silverside-mermaid.ts.net:8788/gmail-pubsub?token=<GOG_SERVE_TOKEN_TASHI_PRIMARY>
           ops:
             oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
-            forwardUrl: https://tashi.silverside-mermaid.ts.net:8442/gmail-pubsub?token=<GOG_SERVE_TOKEN_TASHI_OPS>
+            forwardUrl: https://tashi.silverside-mermaid.ts.net:8789/gmail-pubsub?token=<GOG_SERVE_TOKEN_TASHI_OPS>
       pema:
         accounts:
           primary:
             oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
-            forwardUrl: https://<pema-tailscale-host>:8441/gmail-pubsub?token=<GOG_SERVE_TOKEN_PEMA_PRIMARY>
+            forwardUrl: https://<pema-tailscale-host>:8788/gmail-pubsub?token=<GOG_SERVE_TOKEN_PEMA_PRIMARY>
       # nima:
       #   accounts:
       #     primary:
       #       oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
-      #       forwardUrl: https://<nima-tailscale-host>:8441/gmail-pubsub?token=<GOG_SERVE_TOKEN_NIMA_PRIMARY>
+      #       forwardUrl: https://<nima-tailscale-host>:8790/gmail-pubsub?token=<GOG_SERVE_TOKEN_NIMA_PRIMARY>

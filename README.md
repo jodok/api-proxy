@@ -36,6 +36,7 @@ Current config shape:
 - `apps`:
   - currently `krisp`, optional `github`, optional `gmail`
   - defines:
+    - `krisp.targetAgent` (optional OpenClaw target agent shortname, default `main`)
     - `krisp.agents.<agentId>.incomingAuthorization` (required per-agent auth by URL `:agentId`)
     - `krisp.enabled` (optional boolean route toggle, default `true`)
     - `github.targetAgent` (agent shortname)
@@ -65,8 +66,8 @@ Incoming check:
 
 Forwarded request:
 
-- `POST <agents.<agentId>.url>/hooks/agent`
-- `Authorization: <agents.<agentId>.openclawHooksToken>`
+- `POST <agents.<apps.krisp.targetAgent|main>.url>/hooks/agent`
+- `Authorization: <agents.<apps.krisp.targetAgent|main>.openclawHooksToken>`
 - `Content-Type: application/json`
 
 Forwarded payload:
@@ -165,6 +166,15 @@ Config:
 
 ```yaml
 apps:
+  krisp:
+    enabled: true
+    targetAgent: main
+    agents:
+      tashi:
+        incomingAuthorization: Bearer <KRISP_AUTHORIZATION_TASHI>
+      pema:
+        incomingAuthorization: Bearer <KRISP_AUTHORIZATION_PEMA>
+
   gmail:
     enabled: true
     agents:
@@ -172,15 +182,20 @@ apps:
         accounts:
           primary:
             oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
-            forwardUrl: https://<tashi-tailscale-host>:8441/gmail-pubsub?token=<GOG_SERVE_TOKEN_TASHI_PRIMARY>
+            forwardUrl: https://<tashi-tailscale-host>:8788/gmail-pubsub?token=<GOG_SERVE_TOKEN_TASHI_PRIMARY>
           ops:
             oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
-            forwardUrl: https://<tashi-tailscale-host>:8442/gmail-pubsub?token=<GOG_SERVE_TOKEN_TASHI_OPS>
+            forwardUrl: https://<tashi-tailscale-host>:8789/gmail-pubsub?token=<GOG_SERVE_TOKEN_TASHI_OPS>
       pema:
         accounts:
           primary:
             oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
-            forwardUrl: https://<pema-tailscale-host>:8441/gmail-pubsub?token=<GOG_SERVE_TOKEN_PEMA_PRIMARY>
+            forwardUrl: https://<pema-tailscale-host>:8788/gmail-pubsub?token=<GOG_SERVE_TOKEN_PEMA_PRIMARY>
+      nima:
+        accounts:
+          primary:
+            oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
+            forwardUrl: https://<nima-tailscale-host>:8790/gmail-pubsub?token=<GOG_SERVE_TOKEN_NIMA_PRIMARY>
 ```
 
 All accounts can share one GCP service account (same project) or use separate ones per account.

@@ -252,6 +252,14 @@ function normalizeConfig(raw) {
         throw new Error(`[api-proxy] App 'krisp' agents must be an object`);
       }
 
+      const targetAgent = String(appConfig.targetAgent ?? 'main').trim();
+      if (!targetAgent) {
+        throw new Error(`[api-proxy] App 'krisp' targetAgent must not be empty`);
+      }
+      if (!normalizedAgents[targetAgent]) {
+        throw new Error(`[api-proxy] App 'krisp' references unknown targetAgent '${targetAgent}'`);
+      }
+
       const normalizedKrispAgents = {};
       for (const [krispAgentId, entry] of Object.entries(agentsMap)) {
         if (!entry || typeof entry !== 'object') {
@@ -278,6 +286,7 @@ function normalizeConfig(raw) {
       normalizedApps.krisp = {
         ...appDef,
         enabled: true,
+        targetAgent,
         agents: normalizedKrispAgents,
       };
 
@@ -498,11 +507,17 @@ async function handleKrispWebhook(c) {
   }
 
   const appConfig = config.apps.krisp;
-  const agentConfig = config.agents[routeAgentId];
+  const targetAgent = appConfig.targetAgent;
+  const agentConfig = config.agents[targetAgent];
   const routeAuthConfig = appConfig.agents?.[routeAgentId];
   const expectedAuthorization = routeAuthConfig?.incomingAuthorization;
 
-  if (!agentConfig || !expectedAuthorization) {
+  if (!agentConfig) {
+    log('error', `[api-proxy] invalid_target_agent app=krisp path=${path} target_agent=${targetAgent || 'none'}`);
+    return c.json({ ok: false, error: 'server_misconfigured' }, 500);
+  }
+
+  if (!expectedAuthorization) {
     log('warn', `[api-proxy] unknown_agent app=krisp path=${path} route_agent=${routeAgentId || 'none'}`);
     return c.json({ ok: false, error: 'unknown_agent' }, 404);
   }
@@ -547,17 +562,18 @@ async function handleKrispWebhook(c) {
     logDebugPayload('forward_payload', {
       app: 'krisp',
       routeAgentId,
+      targetAgent,
       ...buildForwardEnvelopeDebug(payload),
     });
 
     const upstream = await forwardToAgent(agentConfig, payload, controller.signal);
 
-    log('info', `[api-proxy] app=krisp agent=${routeAgentId} status=${upstream.status} bytes=${body.byteLength}`);
+    log('info', `[api-proxy] app=krisp route_agent=${routeAgentId} target_agent=${targetAgent} status=${upstream.status} bytes=${body.byteLength}`);
     return upstream;
   } catch (error) {
     const code = error?.name === 'AbortError' ? 504 : 502;
     const messageText = error instanceof Error ? error.message : 'forward request failed';
-    log('error', `[api-proxy] app=krisp agent=${routeAgentId} error=${messageText}`);
+    log('error', `[api-proxy] app=krisp route_agent=${routeAgentId} target_agent=${targetAgent} error=${messageText}`);
     return c.json({ ok: false, error: messageText }, code);
   } finally {
     clearTimeout(timeout);
