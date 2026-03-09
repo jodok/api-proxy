@@ -65,8 +65,8 @@ Incoming check:
 
 Forwarded request:
 
-- `POST <agents.<agentId>.url>/hooks/agent`
-- `Authorization: <agents.<agentId>.openclawHooksToken>`
+- `POST <agents.<apps.krisp.targetAgent|main>.url>/hooks/agent`
+- `Authorization: <agents.<apps.krisp.targetAgent|main>.openclawHooksToken>`
 - `Content-Type: application/json`
 
 Forwarded payload:
