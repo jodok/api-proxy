@@ -23,6 +23,8 @@ agents:
 apps:
   krisp:
     enabled: true
+    # Optional: OpenClaw target agent for all Krisp forwards (defaults to 'main')
+    targetAgent: main
     # Required: auth per agentId in route /v1/webhooks/agents/:agentId/notetaker/krisp
     agents:
       tashi:
@@ -30,7 +32,7 @@ apps:
       pema:
         incomingAuthorization: Bearer <KRISP_AUTHORIZATION_PEMA>
     # OpenClaw hook parameters (hardwired in code, documented here for reference):
-    # agentId: omitted           — Krisp routing is done by proxy route :agentId + sessionKey
+    # agentId: main              — routed via apps.krisp.targetAgent (default: main)
     # sessionKey: hook:notetaker:krisp — routes into the Krisp notetaker hook session
     # wakeMode: next-heartbeat   — processed at the next heartbeat, not urgently
     # deliver: false             — queued silently; no immediate notification pushed
