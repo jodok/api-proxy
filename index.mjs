@@ -520,7 +520,7 @@ async function handleKrispWebhook(c) {
       message,
       agentId: 'main',
       sessionKey: APP_DEFINITIONS.krisp.sessionKey,
-      wakeMode: 'next-heartbeat',
+      wakeMode: 'now',
       deliver: false,
     });
 
