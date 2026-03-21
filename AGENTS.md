@@ -1,105 +1,25 @@
 # AGENTS.md — api-proxy
 
-## Project
+## Repository specific rules
 
-Webhook relay service for Namche.
-Current production flow accepts Krisp webhooks and forwards them to OpenClaw on Tashi.
+- Keep this repository minimal and operationally simple. Do not add automation, abstractions, or tooling unless they clearly reduce maintenance cost.
+- Keep runtime behavior in `index.mjs`. Use YAML config for wiring, credentials, and route toggles, not for moving application logic out of code.
+- Keep `README.md`, `docs/config.yaml.example`, and `docs/api-proxy.service.example` aligned with the current runtime behavior before finishing changes.
+- Keep everything in English: code, docs, commit messages, PR titles, and PR bodies.
+- Krisp ingress is `POST /v1/webhooks/agents/:agentId/notetaker/:notetakerId` with `:notetakerId` currently fixed to `krisp`.
+- For Krisp auth, use `apps.krisp.agents.<agentId>.incomingAuthorization`. The route `:agentId` selects which configured agent receives the webhook.
+- Do not treat the route `:agentId` as an OpenClaw hook payload `agentId`. Krisp routing inside the target agent is done with `sessionKey: hook:notetaker:krisp`.
+- GitHub remains an optional app-specific route at `POST /v1/webhooks/apps/github/:owner/:repo`. Gmail and webforms remain agent-scoped routes under `/v1/webhooks/agents/:agentId/...`.
+- Production deploy target is `/home/deploy/apps/api-proxy` on `bertrand.batlogg.com` with systemd unit `api-proxy.service`. Do not deploy app source into nginx web root (`/var/www/html`).
+- If a rule discovered here should apply across repositories, move it into `jodok/agents` first and then sync it back here.
 
-Built with Hono + Node.js (ESM JavaScript).
+## Global rules
 
-## Language
-
-Everything in English: code, docs, commit messages.
-
-## Git Workflow
-
-1. Always `git pull origin main` before starting work
-2. Create a feature branch with `tashi/` prefix (`git checkout -b tashi/<branch-name>`)
-3. Commit and push to the branch
-4. Open a pull request on GitHub (`gh pr create`)
-5. Wait for Jodok's approval
-6. After approval, merge to main (`gh pr merge --squash`)
-
-Never commit directly to main.
-
-## Commit Messages
-
-Use commitlint-compatible Conventional Commits, for example:
-
-- `feat: ...`
-- `fix: ...`
-- `docs: ...`
-- `chore: ...`
-
-## Development
-
-```bash
-npm install
-npm start
-```
-
-## Runtime / Deploy
-
-- Public domain: `api.namche.ai`
-- Nginx on `bertrand.batlogg.com` proxies to `127.0.0.1:3000`
-- App deploy path: `/home/deploy/apps/api-proxy`
-- Systemd service: `api-proxy.service`
-- Config file: `/etc/api-proxy/config.yaml`
-- CI workflow: `.github/workflows/deploy.yaml`
-
-Do not deploy app source into nginx web root (`/var/www/html`).
-
-## Configuration Model
-
-Hardwired app handlers in code (currently `krisp`, optional `github`, optional `gmail`) use YAML config for wiring and credentials:
-
-- `webform.enabled` (optional boolean route toggle, default `true`)
-- `WEBFORM_ALLOWED_ORIGINS`
-- `agents.<shortname>.url`
-- `agents.<shortname>.openclawHooksToken`
-- `apps.krisp.incomingAuthorization`
-- `apps.krisp.targetAgent`
-- `apps.krisp.enabled` (optional boolean route toggle, default `true`)
-- `apps.github.targetAgent`
-- `apps.github.webhookSecret`
-- `apps.github.sessionKey`
-- `apps.github.enabled` (optional boolean route toggle, default `true`)
-- `apps.gmail.enabled` (optional boolean route toggle, default `true`)
-
-Route toggles are supported via route-local `enabled` flags; timeout config knobs are still not exposed.
-
-## OpenClaw Hook Parameters
-
-Each app forwards to OpenClaw with a fixed set of hook parameters. These are defined in `APP_DEFINITIONS` in `index.mjs`:
-
-| Parameter | Description |
-|-----------|-------------|
-| `name` | Payload name identifying the hook type (e.g. `notetaker:krisp`) |
-| `agentId` | OpenClaw agent session to target (`main` for the primary agent) |
-| `sessionKey` | Routes the payload into a specific hook session within the agent |
-| `wakeMode` | When to wake the agent: `now` (immediately) or `next-heartbeat` (at next periodic check) |
-| `deliver` | Whether to push a notification to the agent (`true` = wake immediately, `false` = queue silently) |
-
-### Per-endpoint settings
-
-**krisp** (`POST /v1/webhooks/apps/krisp`):
-- `sessionKey: hook:notetaker:krisp` — notetaker hook session
-- `wakeMode: next-heartbeat` — processed at the next heartbeat, not urgently
-- `deliver: false` — queued silently, no immediate notification
-
-**github** (`POST /v1/webhooks/apps/github/:owner/:repo`):
-- `sessionKey` comes from `apps.github.sessionKey`
-- `wakeMode: now` — agent wakes immediately
-- `deliver: true` — push notification to process event now
-
-## Logging
-
-- `logLevel` is configured in YAML (`error`, `warn`, `info`, `debug`)
-- `debug` logs include payload details
-
-## Key Files
-
-- `index.mjs` — runtime server, config loading, auth checks, forwarding, logging
-- `docs/config.yaml.example` — config example (including secrets)
-- `docs/api-proxy.service.example` — systemd unit template
-- `.github/workflows/deploy.yaml` — deploy to Bertrand
+- Never push directly to `main`.
+- Always work on a branch prefixed with the active agent name, for example `tashi/...`, `codex/...`, or `claude/...`.
+- Always use commitlint-compatible Conventional Commit messages.
+- Always add `Jodok Batlogg <jodok@batlogg.com>` as co-author on commits.
+- When work is done, always commit, push, and open a pull request.
+- Always squash-merge into `main`.
+- Repository-specific rules may add constraints, but must not weaken these global rules.
+- If a rule should apply across repositories, add it here first and then update the consuming repositories.
