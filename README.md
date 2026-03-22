@@ -153,6 +153,7 @@ Incoming endpoint:
 - auth: GCP Pub/Sub OIDC JWT (`Authorization: Bearer <jwt>`) — verified against Google's public keys
 - `:agentId` must match an entry in `apps.gmail.agents`
 - `:accountId` must match an entry in `apps.gmail.agents.<agentId>.accounts`
+- `:accountId` can be an email address such as `tashi@namche.ai` or `jodok@batlogg.com` (URL-encode if needed)
 
 Forwarded request:
 
@@ -168,20 +169,20 @@ apps:
     agents:
       tashi:
         accounts:
-          tashi:
+          tashi@namche.ai:
             oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
             forwardUrl: https://<tashi-tailscale-host>:8788/gmail-pubsub?token=<GOG_SERVE_TOKEN_TASHI>
-          btlg:
+          jodok@batlogg.com:
             oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
             forwardUrl: https://<tashi-tailscale-host>:8789/gmail-pubsub?token=<GOG_SERVE_TOKEN_BTLG>
       pema:
         accounts:
-          btlg:
+          jodok@batlogg.com:
             oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
             forwardUrl: https://<pema-tailscale-host>:8788/gmail-pubsub?token=<GOG_SERVE_TOKEN_BTLG>
       nima:
         accounts:
-          pina:
+          jodok.batlogg@pina.earth:
             oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
             forwardUrl: https://<nima-tailscale-host>:8790/gmail-pubsub?token=<GOG_SERVE_TOKEN_PINA>
 ```
@@ -204,12 +205,19 @@ gcloud pubsub topics create gmail-hook --project=${PROJECT_ID}
 
 # 3. For each account: create a push subscription pointing to its endpoint
 #    (audience defaults to the push endpoint URL — matches what the proxy verifies)
-for TARGET in tashi:tashi tashi:btlg nima:pina; do
+for TARGET in \
+  "tashi:tashi@namche.ai" \
+  "tashi:jodok@batlogg.com" \
+  "nima:jodok.batlogg@pina.earth"
+do
   AGENT="${TARGET%%:*}"
-  ACCOUNT="${TARGET##*:}"
-  gcloud pubsub subscriptions create gmail-watch-${AGENT}-${ACCOUNT} \
+  ACCOUNT="${TARGET#*:}"
+  ENCODED_ACCOUNT="$(printf '%s' "${ACCOUNT}" | jq -sRr @uri)"
+  SAFE_ACCOUNT="${ACCOUNT//@/_at_}"
+  SAFE_ACCOUNT="${SAFE_ACCOUNT//./_dot_}"
+  gcloud pubsub subscriptions create gmail-watch-${AGENT}-${SAFE_ACCOUNT} \
     --topic=gmail-hook \
-    --push-endpoint="https://api.namche.ai/v1/webhooks/agents/${AGENT}/gmail/${ACCOUNT}" \
+    --push-endpoint="https://api.namche.ai/v1/webhooks/agents/${AGENT}/gmail/${ENCODED_ACCOUNT}" \
     --push-auth-service-account="${SA}" \
     --project=${PROJECT_ID}
 done
