@@ -76,8 +76,7 @@ Forwarded payload:
   "name": "notetaker:krisp",
   "message": "<raw body string>",
   "sessionKey": "hook:notetaker:krisp",
-  "deliver": false,
-  "wakeMode": "now"
+  "deliver": false
 }
 ```
 
@@ -169,22 +168,22 @@ apps:
     agents:
       tashi:
         accounts:
-          primary:
+          tashi:
             oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
-            forwardUrl: https://<tashi-tailscale-host>:8788/gmail-pubsub?token=<GOG_SERVE_TOKEN_TASHI_PRIMARY>
-          ops:
+            forwardUrl: https://<tashi-tailscale-host>:8788/gmail-pubsub?token=<GOG_SERVE_TOKEN_TASHI>
+          btlg:
             oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
-            forwardUrl: https://<tashi-tailscale-host>:8789/gmail-pubsub?token=<GOG_SERVE_TOKEN_TASHI_OPS>
+            forwardUrl: https://<tashi-tailscale-host>:8789/gmail-pubsub?token=<GOG_SERVE_TOKEN_BTLG>
       pema:
         accounts:
-          primary:
+          btlg:
             oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
-            forwardUrl: https://<pema-tailscale-host>:8788/gmail-pubsub?token=<GOG_SERVE_TOKEN_PEMA_PRIMARY>
+            forwardUrl: https://<pema-tailscale-host>:8788/gmail-pubsub?token=<GOG_SERVE_TOKEN_BTLG>
       nima:
         accounts:
-          primary:
+          pina:
             oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
-            forwardUrl: https://<nima-tailscale-host>:8790/gmail-pubsub?token=<GOG_SERVE_TOKEN_NIMA_PRIMARY>
+            forwardUrl: https://<nima-tailscale-host>:8790/gmail-pubsub?token=<GOG_SERVE_TOKEN_PINA>
 ```
 
 All accounts can share one GCP service account (same project) or use separate ones per account.
@@ -205,7 +204,7 @@ gcloud pubsub topics create gmail-hook --project=${PROJECT_ID}
 
 # 3. For each account: create a push subscription pointing to its endpoint
 #    (audience defaults to the push endpoint URL — matches what the proxy verifies)
-for TARGET in tashi:primary tashi:ops pema:primary; do
+for TARGET in tashi:tashi tashi:btlg nima:pina; do
   AGENT="${TARGET%%:*}"
   ACCOUNT="${TARGET##*:}"
   gcloud pubsub subscriptions create gmail-watch-${AGENT}-${ACCOUNT} \
