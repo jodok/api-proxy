@@ -44,6 +44,7 @@ Current config shape:
     - `github.enabled` (optional boolean route toggle, default `true`)
     - `agents.<agentId>.apps.gmail.enabled` (optional boolean route toggle for Gmail on that agent, default `true`)
     - `agents.<agentId>.apps.gmail.subscriptions.<subscription>.oidcEmail` (GCP SA expected in OIDC JWT)
+    - `agents.<agentId>.apps.gmail.subscriptions.<subscription>.token` (required Authorization token for forwarding to `gog gmail watch serve`)
     - `agents.<agentId>.apps.gmail.subscriptions.<subscription>.forwardPort` (optional port for `gog gmail watch serve` on that agent host, defaults to `8788`)
 
 See:
@@ -153,15 +154,16 @@ Each route selects one agent and one Gmail subscription.
 Incoming endpoint:
 
 - `POST /v1/webhooks/agents/:agentId/gmail/:subscription`
-- auth: GCP Pub/Sub OIDC JWT (`Authorization: Bearer <jwt>`) — verified against Google's public keys and forwarded upstream unchanged
+- auth: GCP Pub/Sub OIDC JWT (`Authorization: Bearer <jwt>`) — verified against Google's public keys at api-proxy ingress
 - `:agentId` selects `agents.<agentId>`
 - `:subscription` selects `agents.<agentId>.apps.gmail.subscriptions.<subscription>`
 
 Forwarded request:
 
 - `POST http://<hostname-from-agents.<agentId>.url>:<forwardPort>/gmail-pubsub`
-- `Authorization: Bearer <jwt>` is forwarded as-is so `gog gmail watch serve` can enforce the same OIDC auth
+- `Authorization: <agents.<agentId>.apps.gmail.subscriptions.<subscription>.token>` is sent upstream to `gog gmail watch serve`
 - the hostname comes from `agents.<agentId>.url`; the proxy derives the Gmail target URL and always uses `http`, the configured `forwardPort` or default `8788`, and `/gmail-pubsub`
+- this fixes the watcher-side audience mismatch by not forwarding the original Pub/Sub OIDC JWT upstream
 
 Config:
 
@@ -176,6 +178,7 @@ agents:
         subscriptions:
           jodok.batlogg@pina.earth:
             oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
+            token: <GMAIL_WATCHER_TOKEN_PINA>
             forwardPort: 8788
 ```
 
@@ -206,7 +209,8 @@ gcloud pubsub subscriptions create gmail-watch-${AGENT} \
 ```
 
 Set `oidcEmail` per Gmail subscription to `pubsub-push@<PROJECT_ID>.iam.gserviceaccount.com`.
-Set `forwardPort` only when the local `gog gmail watch serve` port is not `8788`. Gmail forwarding is OIDC-only end to end.
+Set `token` per Gmail subscription to the custom Authorization token expected by the local watcher.
+Set `forwardPort` only when the local `gog gmail watch serve` port is not `8788`. This change keeps OIDC verification at api-proxy ingress and fixes the watcher-side audience mismatch by not forwarding the Pub/Sub JWT upstream.
 
 ## Local Run
 
