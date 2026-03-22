@@ -252,9 +252,13 @@ function normalizeConfig(raw) {
             throw new Error(`[api-proxy] Agent '${agentId}' gmail subscription '${subscription}' config must be an object`);
           }
 
+          const oidcEmail = String(entry.oidcEmail ?? '').trim();
           const token = String(entry.token ?? '').trim();
           const forwardPortValue = entry.forwardPort ?? DEFAULT_GMAIL_FORWARD_PORT;
           const forwardPort = Number(forwardPortValue);
+          if (!oidcEmail) {
+            throw new Error(`[api-proxy] Agent '${agentId}' gmail subscription '${subscription}' missing oidcEmail`);
+          }
           if (!token) {
             throw new Error(`[api-proxy] Agent '${agentId}' gmail subscription '${subscription}' missing token`);
           }
@@ -263,6 +267,7 @@ function normalizeConfig(raw) {
           }
 
           normalizedGmailSubscriptions[subscription] = {
+            oidcEmail,
             token,
             forwardPort,
             forwardUrl: buildGmailForwardUrl(url, forwardPort),
@@ -778,17 +783,25 @@ async function handleGmailWebhook(c) {
     return c.json({ ok: false, error: 'unknown_subscription' }, 404);
   }
 
-  const providedAuth = c.req.header('authorization');
-  if (!authorizationMatches(providedAuth, subscriptionEntry.token)) {
-    if (shouldLog('debug')) {
-      const providedScheme = getAuthScheme(providedAuth);
-      const expectedScheme = getAuthScheme(subscriptionEntry.token);
-      const providedLen = providedAuth ? providedAuth.trim().length : 0;
-      const expectedLen = subscriptionEntry.token.trim().length;
-      log('debug', `[api-proxy] auth_mismatch app=gmail auth_scope=agent:${agentId}:subscription:${subscription} provided_scheme=${providedScheme} expected_scheme=${expectedScheme} provided_len=${providedLen} expected_len=${expectedLen}`);
-    }
+  const authHeader = c.req.header('authorization') ?? '';
+  const jwt = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+  if (!jwt) {
+    log('warn', `[api-proxy] unauthorized app=gmail agent=${agentId} subscription=${subscription} reason=missing_jwt`);
+    return c.json({ ok: false, error: 'unauthorized' }, 401);
+  }
 
-    log('warn', `[api-proxy] unauthorized app=gmail agent=${agentId} subscription=${subscription} reason=authorization`);
+  try {
+    const audience = `https://api.namche.ai/v1/webhooks/agents/${agentId}/gmail/${subscription}`;
+    const { payload } = await jwtVerify(jwt, GOOGLE_JWKS, {
+      issuer: 'https://accounts.google.com',
+      audience,
+    });
+    if (payload.email !== subscriptionEntry.oidcEmail) {
+      log('warn', `[api-proxy] unauthorized app=gmail agent=${agentId} subscription=${subscription} reason=email_mismatch got=${payload.email}`);
+      return c.json({ ok: false, error: 'unauthorized' }, 401);
+    }
+  } catch (err) {
+    log('warn', `[api-proxy] unauthorized app=gmail agent=${agentId} subscription=${subscription} reason=jwt_invalid err=${err?.message}`);
     return c.json({ ok: false, error: 'unauthorized' }, 401);
   }
 
@@ -814,7 +827,7 @@ async function handleGmailWebhook(c) {
       subscription,
       forwardPort: subscriptionEntry.forwardPort,
       targetUrl: subscriptionEntry.forwardUrl,
-      authScheme: 'configured_token',
+      authScheme: 'x-gog-token',
       bytes: body.byteLength,
       contentType: c.req.header('content-type') ?? 'application/json',
       bodyPreview: previewText(toUtf8(bodyBuffer)),
@@ -824,7 +837,7 @@ async function handleGmailWebhook(c) {
       method: 'POST',
       headers: {
         'content-type': c.req.header('content-type') ?? 'application/json',
-        authorization: subscriptionEntry.token,
+        'x-gog-token': subscriptionEntry.token,
         'x-api-proxy': 'api-proxy',
       },
       body,
