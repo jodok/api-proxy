@@ -252,23 +252,18 @@ function normalizeConfig(raw) {
             throw new Error(`[api-proxy] Agent '${agentId}' gmail subscription '${subscription}' config must be an object`);
           }
 
-          const incomingAuthorization = String(entry.incomingAuthorization ?? entry.token ?? '').trim();
-          const forwardAuthorization = String(entry.forwardAuthorization ?? entry.token ?? incomingAuthorization).trim();
+          const token = String(entry.token ?? '').trim();
           const forwardPortValue = entry.forwardPort ?? DEFAULT_GMAIL_FORWARD_PORT;
           const forwardPort = Number(forwardPortValue);
-          if (!incomingAuthorization) {
-            throw new Error(`[api-proxy] Agent '${agentId}' gmail subscription '${subscription}' missing incomingAuthorization`);
-          }
-          if (!forwardAuthorization) {
-            throw new Error(`[api-proxy] Agent '${agentId}' gmail subscription '${subscription}' missing forwardAuthorization`);
+          if (!token) {
+            throw new Error(`[api-proxy] Agent '${agentId}' gmail subscription '${subscription}' missing token`);
           }
           if (!Number.isInteger(forwardPort) || forwardPort < 1 || forwardPort > 65535) {
             throw new Error(`[api-proxy] Agent '${agentId}' gmail subscription '${subscription}' has invalid forwardPort`);
           }
 
           normalizedGmailSubscriptions[subscription] = {
-            incomingAuthorization,
-            forwardAuthorization,
+            token,
             forwardPort,
             forwardUrl: buildGmailForwardUrl(url, forwardPort),
           };
@@ -784,12 +779,12 @@ async function handleGmailWebhook(c) {
   }
 
   const providedAuth = c.req.header('authorization');
-  if (!authorizationMatches(providedAuth, subscriptionEntry.incomingAuthorization)) {
+  if (!authorizationMatches(providedAuth, subscriptionEntry.token)) {
     if (shouldLog('debug')) {
       const providedScheme = getAuthScheme(providedAuth);
-      const expectedScheme = getAuthScheme(subscriptionEntry.incomingAuthorization);
+      const expectedScheme = getAuthScheme(subscriptionEntry.token);
       const providedLen = providedAuth ? providedAuth.trim().length : 0;
-      const expectedLen = subscriptionEntry.incomingAuthorization.trim().length;
+      const expectedLen = subscriptionEntry.token.trim().length;
       log('debug', `[api-proxy] auth_mismatch app=gmail auth_scope=agent:${agentId}:subscription:${subscription} provided_scheme=${providedScheme} expected_scheme=${expectedScheme} provided_len=${providedLen} expected_len=${expectedLen}`);
     }
 
@@ -829,7 +824,7 @@ async function handleGmailWebhook(c) {
       method: 'POST',
       headers: {
         'content-type': c.req.header('content-type') ?? 'application/json',
-        authorization: subscriptionEntry.forwardAuthorization,
+        authorization: subscriptionEntry.token,
         'x-api-proxy': 'api-proxy',
       },
       body,
