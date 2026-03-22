@@ -13,7 +13,7 @@ Hono service for `api.namche.ai`.
 - `POST /v1/webhooks/agents/:agentId/notetaker/:notetakerId` (currently `:notetakerId` = `krisp`)
 - `POST /v1/webhooks/apps/github/:owner/:repo` (optional, GitHub webhooks)
 - `POST /v1/webhooks/agents/:agentId/webform/:formId`
-- `POST /v1/webhooks/agents/:agentId/gmail` (optional, Gmail Pub/Sub push)
+- `POST /v1/webhooks/agents/:agentId/gmail/:subscription` (optional, Gmail Pub/Sub push)
 
 ## Configuration
 
@@ -42,8 +42,8 @@ Current config shape:
     - `github.webhookSecret`
     - `github.sessionKey`
     - `github.enabled` (optional boolean route toggle, default `true`)
-    - `gmail.subscriptions.<subscriptionEmail>.oidcEmail` (GCP SA expected in OIDC JWT)
-    - `gmail.subscriptions.<subscriptionEmail>.forwardPort` (optional port for `gog gmail watch serve` on that agent host, defaults to `8788`)
+    - `agents.<agentId>.apps.gmail.<subscription>.oidcEmail` (GCP SA expected in OIDC JWT)
+    - `agents.<agentId>.apps.gmail.<subscription>.forwardPort` (optional port for `gog gmail watch serve` on that agent host, defaults to `8788`)
 
 See:
 
@@ -54,7 +54,7 @@ Route toggle behavior:
 - disabled routes are not registered
 - requests to disabled paths fall through to wildcard handlers and return `invalid_path`
 - when `apps.github.enabled` is `false`, its required auth/target fields are not required
-- omit `apps.gmail` entirely to disable the Gmail route
+- omit `agents.<agentId>.apps.gmail` to disable Gmail for that agent; if no agent defines it, the Gmail route is disabled
 
 ## Krisp Forwarding
 
@@ -143,15 +143,16 @@ Forwarded payload:
 
 ## Gmail Pub/Sub Forwarding
 
-Optional route — active when `apps.gmail` exists.
+Optional route — active when any agent defines `agents.<agentId>.apps.gmail`.
 
-Supports multiple Gmail subscriptions. Each subscription key must be a full email address whose local part matches a configured agent shortname. Example: `tashi@namche.ai` maps to `agents.tashi`.
+Each route selects one agent and one Gmail subscription.
 
 Incoming endpoint:
 
-- `POST /v1/webhooks/agents/:agentId/gmail`
+- `POST /v1/webhooks/agents/:agentId/gmail/:subscription`
 - auth: GCP Pub/Sub OIDC JWT (`Authorization: Bearer <jwt>`) — verified against Google's public keys and forwarded upstream unchanged
-- `:agentId` must match the local part of one configured Gmail subscription key
+- `:agentId` selects `agents.<agentId>`
+- `:subscription` selects `agents.<agentId>.apps.gmail.<subscription>`
 
 Forwarded request:
 
@@ -162,24 +163,26 @@ Forwarded request:
 Config:
 
 ```yaml
-apps:
-  gmail:
-    subscriptions:
-      tashi@namche.ai:
-        oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
-        forwardPort: 8788
-      pema@namche.ai:
-        oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
-        forwardPort: 8788
+agents:
+  tashi:
+    url: https://tashi.silverside-mermaid.ts.net
+    openclawHooksToken: Bearer <OPENCLAW_HOOKS_TOKEN_TASHI>
+    apps:
+      gmail:
+        jodok.batlogg@pina.earth:
+          oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
+          forwardPort: 8788
 ```
 
-All subscriptions can share one GCP service account (same project) or use separate ones per subscription.
+Each agent can define zero or more Gmail subscriptions.
 
-GCP Pub/Sub setup — one topic, one subscription per agent:
+GCP Pub/Sub setup — one Pub/Sub subscription per Gmail subscription entry:
 
 ```bash
 PROJECT_ID=<PROJECT_ID>
 SA=pubsub-push@${PROJECT_ID}.iam.gserviceaccount.com
+AGENT=tashi
+SUBSCRIPTION=jodok.batlogg@pina.earth
 
 # 1. Create a shared service account for Pub/Sub push auth (once per project)
 gcloud iam service-accounts create pubsub-push \
@@ -189,18 +192,15 @@ gcloud iam service-accounts create pubsub-push \
 # 2. Create a topic (once per project)
 gcloud pubsub topics create gmail-hook --project=${PROJECT_ID}
 
-# 3. For each agent: create a push subscription pointing to its endpoint
-#    (audience defaults to the push endpoint URL — matches what the proxy verifies)
-for AGENT in tashi pema nima; do
-  gcloud pubsub subscriptions create gmail-watch-${AGENT} \
-    --topic=gmail-hook \
-    --push-endpoint="https://api.namche.ai/v1/webhooks/agents/${AGENT}/gmail" \
-    --push-auth-service-account="${SA}" \
-    --project=${PROJECT_ID}
-done
+# 3. Create one push subscription per configured Gmail subscription entry
+gcloud pubsub subscriptions create gmail-watch-${AGENT} \
+  --topic=gmail-hook \
+  --push-endpoint="https://api.namche.ai/v1/webhooks/agents/${AGENT}/gmail/${SUBSCRIPTION}" \
+  --push-auth-service-account="${SA}" \
+  --project=${PROJECT_ID}
 ```
 
-Set `oidcEmail` per subscription to `pubsub-push@<PROJECT_ID>.iam.gserviceaccount.com`.
+Set `oidcEmail` per Gmail subscription to `pubsub-push@<PROJECT_ID>.iam.gserviceaccount.com`.
 Set `forwardPort` only when the local `gog gmail watch serve` port is not `8788`. Gmail forwarding is OIDC-only end to end.
 
 ## Local Run

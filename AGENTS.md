@@ -26,6 +26,6 @@
 
 ## Gmail config
 
-- `apps.gmail.subscriptions.<subscriptionEmail>.oidcEmail`
-- `apps.gmail.subscriptions.<subscriptionEmail>.forwardPort` (optional, defaults to `8788`)
-- Omit `apps.gmail` entirely to disable the Gmail route.
+- `agents.<agentId>.apps.gmail.<subscription>.oidcEmail`
+- `agents.<agentId>.apps.gmail.<subscription>.forwardPort` (optional, defaults to `8788`)
+- Omit `agents.<agentId>.apps.gmail` to disable Gmail for that agent. If no agent defines it, the Gmail route stays disabled.

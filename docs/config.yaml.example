@@ -16,9 +16,19 @@ agents:
   tashi:
     url: https://tashi.silverside-mermaid.ts.net
     openclawHooksToken: Bearer <OPENCLAW_HOOKS_TOKEN_TASHI>
+    apps:
+      gmail:
+        jodok.batlogg@pina.earth:
+          oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
+          # forwardPort: 8788  # optional, default shown for clarity
   pema:
     url: https://<pema-tailscale-host>
     openclawHooksToken: Bearer <OPENCLAW_HOOKS_TOKEN_PEMA>
+    # apps:
+    #   gmail:
+    #     jodok@batlogg.com:
+    #       oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
+    #       # forwardPort: 8788
 
 apps:
   krisp:
@@ -49,21 +59,3 @@ apps:
   #   /v1/webhooks/agents/tashi/webform/complaint
   #   /v1/webhooks/agents/tashi/webform/contact
 
-  # gmail is optional — omit to disable the route
-  # subscriptions maps Gmail subscription emails. Each key's local part must
-  # match a configured agent shortname, for example tashi@namche.ai -> agents.tashi.
-  # The oidcEmail is the GCP service account expected in the Pub/Sub OIDC JWT.
-  # The proxy derives http://<agent host>:<forwardPort>/gmail-pubsub from the
-  # matching agents.<agentId>.url and forwards the same Authorization header.
-  # forwardPort is optional and defaults to 8788.
-  gmail:
-    subscriptions:
-      tashi@namche.ai:
-        oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
-        # forwardPort: 8788  # optional, default shown for clarity
-      pema@namche.ai:
-        oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
-        # forwardPort: 8788
-      # nima@namche.ai:
-      #   oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
-      #   forwardPort: 8788
