@@ -252,15 +252,13 @@ function normalizeConfig(raw) {
             throw new Error(`[api-proxy] Agent '${agentId}' gmail subscription '${subscription}' config must be an object`);
           }
 
-          const incomingAuthorization = String(entry.incomingAuthorization ?? entry.token ?? '').trim();
-          const forwardAuthorization = String(entry.forwardAuthorization ?? entry.token ?? incomingAuthorization).trim();
+          const token = String(entry.token ?? entry.incomingAuthorization ?? entry.forwardAuthorization ?? '').trim();
+          const incomingAuthorization = String(entry.incomingAuthorization ?? token).trim();
+          const forwardAuthorization = String(entry.forwardAuthorization ?? token).trim();
           const forwardPortValue = entry.forwardPort ?? DEFAULT_GMAIL_FORWARD_PORT;
           const forwardPort = Number(forwardPortValue);
-          if (!incomingAuthorization) {
-            throw new Error(`[api-proxy] Agent '${agentId}' gmail subscription '${subscription}' missing incomingAuthorization`);
-          }
-          if (!forwardAuthorization) {
-            throw new Error(`[api-proxy] Agent '${agentId}' gmail subscription '${subscription}' missing forwardAuthorization`);
+          if (!token) {
+            throw new Error(`[api-proxy] Agent '${agentId}' gmail subscription '${subscription}' missing token`);
           }
           if (!Number.isInteger(forwardPort) || forwardPort < 1 || forwardPort > 65535) {
             throw new Error(`[api-proxy] Agent '${agentId}' gmail subscription '${subscription}' has invalid forwardPort`);

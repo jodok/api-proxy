@@ -210,7 +210,7 @@ gcloud pubsub subscriptions create gmail-watch-${AGENT} \
 
 Set `oidcEmail` per Gmail subscription to `pubsub-push@<PROJECT_ID>.iam.gserviceaccount.com`.
 Set `token` per Gmail subscription to the custom Authorization token expected by the local watcher.
-Set `forwardPort` only when the local `gog gmail watch serve` port is not `8788`. This change keeps OIDC verification at api-proxy ingress and fixes the watcher-side audience mismatch by not forwarding the Pub/Sub JWT upstream.
+Set `token` per Gmail subscription to the shared token expected by the local watcher. Set `forwardPort` only when the local `gog gmail watch serve` port is not `8788`. This change keeps OIDC verification at api-proxy ingress and fixes the watcher-side audience mismatch by not forwarding the Pub/Sub JWT upstream.
 
 ## Local Run
 
