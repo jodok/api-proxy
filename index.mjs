@@ -26,7 +26,7 @@ const APP_DEFINITIONS = {
     path: '/v1/webhooks/apps/github/:owner/:repo',
   },
   gmail: {
-    path: '/v1/webhooks/agents/:agentId/gmail',
+    path: '/v1/webhooks/agents/:agentId/gmail/:accountId',
   },
 };
 
@@ -345,14 +345,34 @@ function normalizeConfig(raw) {
         if (!entry || typeof entry !== 'object') {
           throw new Error(`[api-proxy] App 'gmail' agent '${gmailAgentId}' config must be an object`);
         }
-        const oidcEmail = String(entry.oidcEmail ?? '').trim();
-        const forwardUrl = String(entry.forwardUrl ?? '').trim();
-        if (!oidcEmail) throw new Error(`[api-proxy] App 'gmail' agent '${gmailAgentId}' missing oidcEmail`);
-        if (!forwardUrl) throw new Error(`[api-proxy] App 'gmail' agent '${gmailAgentId}' missing forwardUrl`);
         if (!normalizedAgents[gmailAgentId]) {
           throw new Error(`[api-proxy] App 'gmail' references unknown agent '${gmailAgentId}'`);
         }
-        normalizedGmailAgents[gmailAgentId] = { oidcEmail, forwardUrl };
+
+        const accountsMap = entry.accounts;
+        if (!accountsMap || typeof accountsMap !== 'object' || Array.isArray(accountsMap)) {
+          throw new Error(`[api-proxy] App 'gmail' agent '${gmailAgentId}' requires an 'accounts' map`);
+        }
+
+        const normalizedAccounts = {};
+        for (const [accountId, accountEntry] of Object.entries(accountsMap)) {
+          if (!accountEntry || typeof accountEntry !== 'object') {
+            throw new Error(`[api-proxy] App 'gmail' agent '${gmailAgentId}' account '${accountId}' config must be an object`);
+          }
+
+          const oidcEmail = String(accountEntry.oidcEmail ?? '').trim();
+          const forwardUrl = String(accountEntry.forwardUrl ?? '').trim();
+          if (!oidcEmail) throw new Error(`[api-proxy] App 'gmail' agent '${gmailAgentId}' account '${accountId}' missing oidcEmail`);
+          if (!forwardUrl) throw new Error(`[api-proxy] App 'gmail' agent '${gmailAgentId}' account '${accountId}' missing forwardUrl`);
+
+          normalizedAccounts[accountId] = { oidcEmail, forwardUrl };
+        }
+
+        if (Object.keys(normalizedAccounts).length === 0) {
+          throw new Error(`[api-proxy] App 'gmail' agent '${gmailAgentId}' requires at least one account entry`);
+        }
+
+        normalizedGmailAgents[gmailAgentId] = { accounts: normalizedAccounts };
       }
 
       if (Object.keys(normalizedGmailAgents).length === 0) {
@@ -724,6 +744,7 @@ async function handleWebformWebhook(c) {
 async function handleGmailWebhook(c) {
   const path = new URL(c.req.url).pathname;
   const agentId = String(c.req.param('agentId') ?? '').trim();
+  const accountId = String(c.req.param('accountId') ?? '').trim();
   const appConfig = config.apps.gmail;
 
   if (!appConfig) {
@@ -732,7 +753,8 @@ async function handleGmailWebhook(c) {
   }
 
   const agentEntry = appConfig.agents?.[agentId];
-  if (!agentEntry) {
+  const accountEntry = agentEntry?.accounts?.[accountId];
+  if (!agentEntry || !accountEntry) {
     log('warn', `[api-proxy] unknown_agent path=${path} agent=${agentId || 'none'}`);
     return c.json({ ok: false, error: 'unknown_agent' }, 404);
   }
@@ -741,22 +763,22 @@ async function handleGmailWebhook(c) {
   const authHeader = c.req.header('authorization') ?? '';
   const jwt = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
   if (!jwt) {
-    log('warn', `[api-proxy] unauthorized app=gmail agent=${agentId} reason=missing_jwt`);
+    log('warn', `[api-proxy] unauthorized app=gmail agent=${agentId} account=${accountId || 'none'} reason=missing_jwt`);
     return c.json({ ok: false, error: 'unauthorized' }, 401);
   }
 
   try {
-    const audience = `https://api.namche.ai/v1/webhooks/agents/${agentId}/gmail`;
+    const audience = `https://api.namche.ai/v1/webhooks/agents/${agentId}/gmail/${accountId}`;
     const { payload } = await jwtVerify(jwt, GOOGLE_JWKS, {
       issuer: 'https://accounts.google.com',
       audience,
     });
-    if (payload.email !== agentEntry.oidcEmail) {
-      log('warn', `[api-proxy] unauthorized app=gmail agent=${agentId} reason=email_mismatch got=${payload.email}`);
+    if (payload.email !== accountEntry.oidcEmail) {
+      log('warn', `[api-proxy] unauthorized app=gmail agent=${agentId} account=${accountId} reason=email_mismatch got=${payload.email}`);
       return c.json({ ok: false, error: 'unauthorized' }, 401);
     }
   } catch (err) {
-    log('warn', `[api-proxy] unauthorized app=gmail agent=${agentId} reason=jwt_invalid err=${err?.message}`);
+    log('warn', `[api-proxy] unauthorized app=gmail agent=${agentId} account=${accountId || 'none'} reason=jwt_invalid err=${err?.message}`);
     return c.json({ ok: false, error: 'unauthorized' }, 401);
   }
 
@@ -766,6 +788,7 @@ async function handleGmailWebhook(c) {
     app: 'gmail',
     path,
     agentId,
+    accountId,
     bytes: body.byteLength,
     contentType: c.req.header('content-type') ?? 'application/json',
     bodyPreview: previewText(toUtf8(bodyBuffer)),
@@ -777,13 +800,15 @@ async function handleGmailWebhook(c) {
   try {
     logDebugPayload('forward_payload', {
       app: 'gmail',
-      targetUrl: agentEntry.forwardUrl,
+      agentId,
+      accountId,
+      targetUrl: accountEntry.forwardUrl,
       bytes: body.byteLength,
       contentType: c.req.header('content-type') ?? 'application/json',
       bodyPreview: previewText(toUtf8(bodyBuffer)),
     });
 
-    const upstream = await fetch(agentEntry.forwardUrl, {
+    const upstream = await fetch(accountEntry.forwardUrl, {
       method: 'POST',
       headers: {
         'content-type': c.req.header('content-type') ?? 'application/json',
@@ -794,12 +819,12 @@ async function handleGmailWebhook(c) {
     });
 
     const responseBody = await upstream.arrayBuffer();
-    log('info', `[api-proxy] app=gmail agent=${agentId} status=${upstream.status} bytes=${body.byteLength}`);
+    log('info', `[api-proxy] app=gmail agent=${agentId} account=${accountId} status=${upstream.status} bytes=${body.byteLength}`);
     return new Response(responseBody, { status: upstream.status });
   } catch (error) {
     const code = error?.name === 'AbortError' ? 504 : 502;
     const messageText = error instanceof Error ? error.message : 'forward request failed';
-    log('error', `[api-proxy] app=gmail agent=${agentId} error=${messageText}`);
+    log('error', `[api-proxy] app=gmail agent=${agentId} account=${accountId} error=${messageText}`);
     return c.json({ ok: false, error: messageText }, code);
   } finally {
     clearTimeout(timeout);

@@ -32,7 +32,7 @@ apps:
     # OpenClaw hook parameters (hardwired in code, documented here for reference):
     # agentId: main              — OpenClaw agent session id (fixed)
     # sessionKey: hook:notetaker:krisp — routes into the Krisp notetaker hook session
-    # wakeMode: next-heartbeat   — processed at the next heartbeat, not urgently
+    # wakeMode: now              — processed immediately
     # deliver: false             — queued silently; no immediate notification pushed
 
   # github is optional — omit to disable the route
@@ -52,18 +52,28 @@ apps:
   #   /v1/webhooks/agents/tashi/webform/contact
 
   # gmail is optional — omit to disable the route
-  # Each agent entry maps an agentId to its own oidcEmail + forwardUrl.
+  # Each agent can expose multiple Gmail accounts.
+  # Every account entry maps to its own daemon URL, for example on a different port.
   # The oidcEmail is the GCP service account expected in the Pub/Sub OIDC JWT.
-  # All agents can share one service account (same GCP project) or use separate ones.
+  # All accounts can share one service account (same GCP project) or use separate ones.
   gmail:
     enabled: true  # set false to disable Gmail proxy route without removing this block
     agents:
       tashi:
-        oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
-        forwardUrl: https://tashi.silverside-mermaid.ts.net/gmail-pubsub?token=<GOG_SERVE_TOKEN_TASHI>
+        accounts:
+          primary:
+            oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
+            forwardUrl: https://tashi.silverside-mermaid.ts.net:8441/gmail-pubsub?token=<GOG_SERVE_TOKEN_TASHI_PRIMARY>
+          ops:
+            oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
+            forwardUrl: https://tashi.silverside-mermaid.ts.net:8442/gmail-pubsub?token=<GOG_SERVE_TOKEN_TASHI_OPS>
       pema:
-        oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
-        forwardUrl: https://<pema-tailscale-host>/gmail-pubsub?token=<GOG_SERVE_TOKEN_PEMA>
+        accounts:
+          primary:
+            oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
+            forwardUrl: https://<pema-tailscale-host>:8441/gmail-pubsub?token=<GOG_SERVE_TOKEN_PEMA_PRIMARY>
       # nima:
-      #   oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
-      #   forwardUrl: https://<nima-tailscale-host>/gmail-pubsub?token=<GOG_SERVE_TOKEN_NIMA>
+      #   accounts:
+      #     primary:
+      #       oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
+      #       forwardUrl: https://<nima-tailscale-host>:8441/gmail-pubsub?token=<GOG_SERVE_TOKEN_NIMA_PRIMARY>
