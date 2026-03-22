@@ -15,6 +15,8 @@ const DEFAULT_CONFIG_PATH = '/etc/api-proxy/config.yaml';
 const configPath = process.env.CONFIG_PATH ?? DEFAULT_CONFIG_PATH;
 const FORWARD_TIMEOUT_MS = 15000;
 const DEBUG_MESSAGE_PREVIEW_CHARS = 300;
+const GMAIL_FORWARD_PATH = '/gmail-pubsub';
+const DEFAULT_GMAIL_FORWARD_PORT = 8788;
 
 const APP_DEFINITIONS = {
   krisp: {
@@ -26,7 +28,7 @@ const APP_DEFINITIONS = {
     path: '/v1/webhooks/apps/github/:owner/:repo',
   },
   gmail: {
-    path: '/v1/webhooks/agents/:agentId/gmail/:accountId',
+    path: '/v1/webhooks/agents/:agentId/gmail/:subscription',
   },
 };
 
@@ -208,12 +210,13 @@ function normalizeConfig(raw) {
 
   const normalizedAgents = {};
   for (const [agentId, agent] of Object.entries(agents)) {
-    if (!agent || typeof agent !== 'object') {
+    if (!agent || typeof agent !== 'object' || Array.isArray(agent)) {
       throw new Error(`[api-proxy] Invalid agent config for '${agentId}'`);
     }
 
     const url = String(agent.url ?? '').trim();
     const openclawHooksToken = String(agent.openclawHooksToken ?? '').trim();
+    const agentApps = agent.apps ?? {};
 
     if (!url) {
       throw new Error(`[api-proxy] Agent '${agentId}' missing url`);
@@ -223,9 +226,62 @@ function normalizeConfig(raw) {
       throw new Error(`[api-proxy] Agent '${agentId}' missing openclawHooksToken`);
     }
 
+    if (!agentApps || typeof agentApps !== 'object' || Array.isArray(agentApps)) {
+      throw new Error(`[api-proxy] Agent '${agentId}' apps must be an object`);
+    }
+
+    const normalizedAgentApps = {};
+    const gmailConfig = agentApps.gmail;
+    if (gmailConfig !== undefined) {
+      if (!gmailConfig || typeof gmailConfig !== 'object' || Array.isArray(gmailConfig)) {
+        throw new Error(`[api-proxy] Agent '${agentId}' app 'gmail' must be an object`);
+      }
+
+      const gmailEnabled = gmailConfig.enabled ?? true;
+      if (typeof gmailEnabled !== 'boolean') {
+        throw new Error(`[api-proxy] Agent '${agentId}' app 'gmail' enabled must be a boolean`);
+      }
+      if (!gmailEnabled) {
+        normalizedAgentApps.gmail = { enabled: false, subscriptions: {} };
+      } else {
+        const gmailSubscriptions = gmailConfig.subscriptions;
+        if (!gmailSubscriptions || typeof gmailSubscriptions !== 'object' || Array.isArray(gmailSubscriptions)) {
+          throw new Error(`[api-proxy] Agent '${agentId}' app 'gmail' requires a 'subscriptions' map`);
+        }
+
+        const normalizedGmailSubscriptions = {};
+        for (const [subscription, entry] of Object.entries(gmailSubscriptions)) {
+          if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+            throw new Error(`[api-proxy] Agent '${agentId}' gmail subscription '${subscription}' config must be an object`);
+          }
+
+          const oidcEmail = String(entry.oidcEmail ?? '').trim();
+          const forwardPortValue = entry.forwardPort ?? DEFAULT_GMAIL_FORWARD_PORT;
+          const forwardPort = Number(forwardPortValue);
+          if (!oidcEmail) throw new Error(`[api-proxy] Agent '${agentId}' gmail subscription '${subscription}' missing oidcEmail`);
+          if (!Number.isInteger(forwardPort) || forwardPort < 1 || forwardPort > 65535) {
+            throw new Error(`[api-proxy] Agent '${agentId}' gmail subscription '${subscription}' has invalid forwardPort`);
+          }
+
+          normalizedGmailSubscriptions[subscription] = {
+            oidcEmail,
+            forwardPort,
+            forwardUrl: buildGmailForwardUrl(url, forwardPort),
+          };
+        }
+
+        if (Object.keys(normalizedGmailSubscriptions).length === 0) {
+          throw new Error(`[api-proxy] Agent '${agentId}' app 'gmail' requires at least one subscription entry`);
+        }
+
+        normalizedAgentApps.gmail = { enabled: true, subscriptions: normalizedGmailSubscriptions };
+      }
+    }
+
     normalizedAgents[agentId] = {
       url,
       openclawHooksToken,
+      apps: normalizedAgentApps,
     };
   }
 
@@ -319,67 +375,17 @@ function normalizeConfig(raw) {
       continue;
     }
 
-    // gmail is optional — only active when present in config
+    // gmail is configured per agent under agents.<agentId>.apps.gmail
     if (appId === 'gmail') {
-      if (!appConfig) continue;
-      if (typeof appConfig !== 'object') {
-        throw new Error(`[api-proxy] App 'gmail' config must be an object`);
+      if (appConfig !== undefined) {
+        throw new Error(`[api-proxy] App 'gmail' must be configured under agents.<agentId>.apps.gmail`);
       }
 
-      const enabled = appConfig.enabled ?? true;
-      if (typeof enabled !== 'boolean') {
-        throw new Error(`[api-proxy] App 'gmail' enabled must be a boolean`);
-      }
-      if (!enabled) {
-        normalizedApps.gmail = { ...appDef, enabled: false };
-        continue;
-      }
+      const enabled = Object.values(normalizedAgents).some((agentConfig) => {
+        return Boolean(agentConfig.apps?.gmail?.enabled && Object.keys(agentConfig.apps.gmail.subscriptions).length > 0);
+      });
 
-      const agentsMap = appConfig.agents;
-      if (!agentsMap || typeof agentsMap !== 'object' || Array.isArray(agentsMap)) {
-        throw new Error(`[api-proxy] App 'gmail' requires an 'agents' map`);
-      }
-
-      const normalizedGmailAgents = {};
-      for (const [gmailAgentId, entry] of Object.entries(agentsMap)) {
-        if (!entry || typeof entry !== 'object') {
-          throw new Error(`[api-proxy] App 'gmail' agent '${gmailAgentId}' config must be an object`);
-        }
-        if (!normalizedAgents[gmailAgentId]) {
-          throw new Error(`[api-proxy] App 'gmail' references unknown agent '${gmailAgentId}'`);
-        }
-
-        const accountsMap = entry.accounts;
-        if (!accountsMap || typeof accountsMap !== 'object' || Array.isArray(accountsMap)) {
-          throw new Error(`[api-proxy] App 'gmail' agent '${gmailAgentId}' requires an 'accounts' map`);
-        }
-
-        const normalizedAccounts = {};
-        for (const [accountId, accountEntry] of Object.entries(accountsMap)) {
-          if (!accountEntry || typeof accountEntry !== 'object') {
-            throw new Error(`[api-proxy] App 'gmail' agent '${gmailAgentId}' account '${accountId}' config must be an object`);
-          }
-
-          const oidcEmail = String(accountEntry.oidcEmail ?? '').trim();
-          const forwardUrl = String(accountEntry.forwardUrl ?? '').trim();
-          if (!oidcEmail) throw new Error(`[api-proxy] App 'gmail' agent '${gmailAgentId}' account '${accountId}' missing oidcEmail`);
-          if (!forwardUrl) throw new Error(`[api-proxy] App 'gmail' agent '${gmailAgentId}' account '${accountId}' missing forwardUrl`);
-
-          normalizedAccounts[accountId] = { oidcEmail, forwardUrl };
-        }
-
-        if (Object.keys(normalizedAccounts).length === 0) {
-          throw new Error(`[api-proxy] App 'gmail' agent '${gmailAgentId}' requires at least one account entry`);
-        }
-
-        normalizedGmailAgents[gmailAgentId] = { accounts: normalizedAccounts };
-      }
-
-      if (Object.keys(normalizedGmailAgents).length === 0) {
-        throw new Error(`[api-proxy] App 'gmail' requires at least one agent entry`);
-      }
-
-      normalizedApps.gmail = { ...appDef, enabled: true, agents: normalizedGmailAgents };
+      normalizedApps.gmail = { ...appDef, enabled };
       continue;
     }
 
@@ -445,6 +451,22 @@ function isAppRouteEnabled(appId) {
 function buildHooksUrl(baseUrl) {
   const root = String(baseUrl ?? '').replace(/\/$/, '');
   return `${root}/hooks/agent`;
+}
+
+function buildGmailForwardUrl(agentBaseUrl, forwardPort) {
+  let baseUrl;
+  try {
+    baseUrl = new URL(String(agentBaseUrl ?? ''));
+  } catch {
+    throw new Error(`[api-proxy] Invalid agent url '${agentBaseUrl}' for Gmail forwarding`);
+  }
+
+  baseUrl.protocol = 'http:';
+  baseUrl.port = String(forwardPort);
+  baseUrl.pathname = GMAIL_FORWARD_PATH;
+  baseUrl.search = '';
+  baseUrl.hash = '';
+  return baseUrl.toString();
 }
 
 function getAuthScheme(value) {
@@ -743,41 +765,39 @@ async function handleWebformWebhook(c) {
 async function handleGmailWebhook(c) {
   const path = new URL(c.req.url).pathname;
   const agentId = String(c.req.param('agentId') ?? '').trim();
-  const accountId = String(c.req.param('accountId') ?? '').trim();
-  const appConfig = config.apps.gmail;
+  const subscription = String(c.req.param('subscription') ?? '').trim();
+  const agentConfig = config.agents[agentId];
+  const subscriptionEntry = agentConfig?.apps?.gmail?.subscriptions?.[subscription];
 
-  if (!appConfig) {
-    log('warn', `[api-proxy] gmail_not_configured path=${path}`);
-    return c.json({ ok: false, error: 'not_configured' }, 404);
-  }
-
-  const agentEntry = appConfig.agents?.[agentId];
-  const accountEntry = agentEntry?.accounts?.[accountId];
-  if (!agentEntry || !accountEntry) {
+  if (!agentConfig) {
     log('warn', `[api-proxy] unknown_agent path=${path} agent=${agentId || 'none'}`);
     return c.json({ ok: false, error: 'unknown_agent' }, 404);
   }
 
-  // Verify GCP Pub/Sub OIDC JWT (sent in Authorization: Bearer header)
+  if (!subscriptionEntry) {
+    log('warn', `[api-proxy] unknown_subscription path=${path} agent=${agentId} subscription=${subscription || 'none'}`);
+    return c.json({ ok: false, error: 'unknown_subscription' }, 404);
+  }
+
   const authHeader = c.req.header('authorization') ?? '';
   const jwt = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
   if (!jwt) {
-    log('warn', `[api-proxy] unauthorized app=gmail agent=${agentId} account=${accountId || 'none'} reason=missing_jwt`);
+    log('warn', `[api-proxy] unauthorized app=gmail agent=${agentId} subscription=${subscription} reason=missing_jwt`);
     return c.json({ ok: false, error: 'unauthorized' }, 401);
   }
 
   try {
-    const audience = `https://api.namche.ai/v1/webhooks/agents/${agentId}/gmail/${accountId}`;
+    const audience = `https://api.namche.ai/v1/webhooks/agents/${agentId}/gmail/${subscription}`;
     const { payload } = await jwtVerify(jwt, GOOGLE_JWKS, {
       issuer: 'https://accounts.google.com',
       audience,
     });
-    if (payload.email !== accountEntry.oidcEmail) {
-      log('warn', `[api-proxy] unauthorized app=gmail agent=${agentId} account=${accountId} reason=email_mismatch got=${payload.email}`);
+    if (payload.email !== subscriptionEntry.oidcEmail) {
+      log('warn', `[api-proxy] unauthorized app=gmail agent=${agentId} subscription=${subscription} reason=email_mismatch got=${payload.email}`);
       return c.json({ ok: false, error: 'unauthorized' }, 401);
     }
   } catch (err) {
-    log('warn', `[api-proxy] unauthorized app=gmail agent=${agentId} account=${accountId || 'none'} reason=jwt_invalid err=${err?.message}`);
+    log('warn', `[api-proxy] unauthorized app=gmail agent=${agentId} subscription=${subscription} reason=jwt_invalid err=${err?.message}`);
     return c.json({ ok: false, error: 'unauthorized' }, 401);
   }
 
@@ -787,7 +807,7 @@ async function handleGmailWebhook(c) {
     app: 'gmail',
     path,
     agentId,
-    accountId,
+    subscription,
     bytes: body.byteLength,
     contentType: c.req.header('content-type') ?? 'application/json',
     bodyPreview: previewText(toUtf8(bodyBuffer)),
@@ -800,17 +820,19 @@ async function handleGmailWebhook(c) {
     logDebugPayload('forward_payload', {
       app: 'gmail',
       agentId,
-      accountId,
-      targetUrl: accountEntry.forwardUrl,
+      subscription,
+      forwardPort: subscriptionEntry.forwardPort,
+      targetUrl: subscriptionEntry.forwardUrl,
       bytes: body.byteLength,
       contentType: c.req.header('content-type') ?? 'application/json',
       bodyPreview: previewText(toUtf8(bodyBuffer)),
     });
 
-    const upstream = await fetch(accountEntry.forwardUrl, {
+    const upstream = await fetch(subscriptionEntry.forwardUrl, {
       method: 'POST',
       headers: {
         'content-type': c.req.header('content-type') ?? 'application/json',
+        authorization: authHeader,
         'x-api-proxy': 'api-proxy',
       },
       body,
@@ -818,12 +840,12 @@ async function handleGmailWebhook(c) {
     });
 
     const responseBody = await upstream.arrayBuffer();
-    log('info', `[api-proxy] app=gmail agent=${agentId} account=${accountId} status=${upstream.status} bytes=${body.byteLength}`);
+    log('info', `[api-proxy] app=gmail agent=${agentId} subscription=${subscription} port=${subscriptionEntry.forwardPort} status=${upstream.status} bytes=${body.byteLength}`);
     return new Response(responseBody, { status: upstream.status });
   } catch (error) {
     const code = error?.name === 'AbortError' ? 504 : 502;
     const messageText = error instanceof Error ? error.message : 'forward request failed';
-    log('error', `[api-proxy] app=gmail agent=${agentId} account=${accountId} error=${messageText}`);
+    log('error', `[api-proxy] app=gmail agent=${agentId} subscription=${subscription} error=${messageText}`);
     return c.json({ ok: false, error: messageText }, code);
   } finally {
     clearTimeout(timeout);

@@ -16,9 +16,27 @@ agents:
   tashi:
     url: https://tashi.silverside-mermaid.ts.net
     openclawHooksToken: Bearer <OPENCLAW_HOOKS_TOKEN_TASHI>
+    apps:
+      gmail:
+        enabled: true
+        subscriptions:
+          tashi@namche.ai:
+            oidcEmail: pubsub-push@omega-linker-486421-e1.iam.gserviceaccount.com
+          jodok@batlogg.com:
+            oidcEmail: pubsub-push@omega-linker-486421-e1.iam.gserviceaccount.com
+            forwardPort: 8789
+          jodok.batlogg@pina.earth:
+            oidcEmail: pubsub-push@jodok-485907.iam.gserviceaccount.com
+            forwardPort: 8790
   pema:
     url: https://<pema-tailscale-host>
     openclawHooksToken: Bearer <OPENCLAW_HOOKS_TOKEN_PEMA>
+    # apps:
+    #   gmail:
+    #     enabled: false
+    #     subscriptions:
+    #       jodok@batlogg.com:
+    #         oidcEmail: pubsub-push@omega-linker-486421-e1.iam.gserviceaccount.com
 
 apps:
   krisp:
@@ -49,30 +67,3 @@ apps:
   #   /v1/webhooks/agents/tashi/webform/complaint
   #   /v1/webhooks/agents/tashi/webform/contact
 
-  # gmail is optional — omit to disable the route
-  # Each agent can expose multiple Gmail accounts.
-  # Every account entry maps to its own daemon URL, for example on a different port.
-  # Account ids can also be full email addresses.
-  # The oidcEmail is the GCP service account expected in the Pub/Sub OIDC JWT.
-  # All accounts can share one service account (same GCP project) or use separate ones.
-  gmail:
-    enabled: true  # set false to disable Gmail proxy route without removing this block
-    agents:
-      tashi:
-        accounts:
-          tashi@namche.ai:
-            oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
-            forwardUrl: https://tashi.silverside-mermaid.ts.net:8788/gmail-pubsub?token=<GOG_SERVE_TOKEN_TASHI>
-          jodok@batlogg.com:
-            oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
-            forwardUrl: https://tashi.silverside-mermaid.ts.net:8789/gmail-pubsub?token=<GOG_SERVE_TOKEN_BTLG>
-      pema:
-        accounts:
-          jodok@batlogg.com:
-            oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
-            forwardUrl: https://<pema-tailscale-host>:8788/gmail-pubsub?token=<GOG_SERVE_TOKEN_BTLG>
-      # nima:
-      #   accounts:
-      #     jodok.batlogg@pina.earth:
-      #       oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
-      #       forwardUrl: https://<nima-tailscale-host>:8790/gmail-pubsub?token=<GOG_SERVE_TOKEN_PINA>
