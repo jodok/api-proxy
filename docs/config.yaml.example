@@ -18,17 +18,25 @@ agents:
     openclawHooksToken: Bearer <OPENCLAW_HOOKS_TOKEN_TASHI>
     apps:
       gmail:
-        jodok.batlogg@pina.earth:
-          oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
-          # forwardPort: 8788  # optional, default shown for clarity
+        enabled: true
+        subscriptions:
+          tashi@namche.ai:
+            oidcEmail: pubsub-push@omega-linker-486421-e1.iam.gserviceaccount.com
+          jodok@batlogg.com:
+            oidcEmail: pubsub-push@omega-linker-486421-e1.iam.gserviceaccount.com
+            forwardPort: 8789
+          jodok.batlogg@pina.earth:
+            oidcEmail: pubsub-push@jodok-485907.iam.gserviceaccount.com
+            forwardPort: 8790
   pema:
     url: https://<pema-tailscale-host>
     openclawHooksToken: Bearer <OPENCLAW_HOOKS_TOKEN_PEMA>
     # apps:
     #   gmail:
-    #     jodok@batlogg.com:
-    #       oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
-    #       # forwardPort: 8788
+    #     enabled: false
+    #     subscriptions:
+    #       jodok@batlogg.com:
+    #         oidcEmail: pubsub-push@omega-linker-486421-e1.iam.gserviceaccount.com
 
 apps:
   krisp:

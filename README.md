@@ -42,8 +42,9 @@ Current config shape:
     - `github.webhookSecret`
     - `github.sessionKey`
     - `github.enabled` (optional boolean route toggle, default `true`)
-    - `agents.<agentId>.apps.gmail.<subscription>.oidcEmail` (GCP SA expected in OIDC JWT)
-    - `agents.<agentId>.apps.gmail.<subscription>.forwardPort` (optional port for `gog gmail watch serve` on that agent host, defaults to `8788`)
+    - `agents.<agentId>.apps.gmail.enabled` (optional boolean route toggle for Gmail on that agent, default `true`)
+    - `agents.<agentId>.apps.gmail.subscriptions.<subscription>.oidcEmail` (GCP SA expected in OIDC JWT)
+    - `agents.<agentId>.apps.gmail.subscriptions.<subscription>.forwardPort` (optional port for `gog gmail watch serve` on that agent host, defaults to `8788`)
 
 See:
 
@@ -54,7 +55,9 @@ Route toggle behavior:
 - disabled routes are not registered
 - requests to disabled paths fall through to wildcard handlers and return `invalid_path`
 - when `apps.github.enabled` is `false`, its required auth/target fields are not required
-- omit `agents.<agentId>.apps.gmail` to disable Gmail for that agent; if no agent defines it, the Gmail route is disabled
+- omit `agents.<agentId>.apps.gmail` to disable Gmail for that agent entirely
+- set `agents.<agentId>.apps.gmail.enabled: false` to keep config in place but disable Gmail for that agent
+- if no agent has Gmail enabled, the Gmail route is disabled
 
 ## Krisp Forwarding
 
@@ -143,7 +146,7 @@ Forwarded payload:
 
 ## Gmail Pub/Sub Forwarding
 
-Optional route — active when any agent defines `agents.<agentId>.apps.gmail`.
+Optional route — active when any agent defines `agents.<agentId>.apps.gmail.enabled` as `true` or leaves it unset.
 
 Each route selects one agent and one Gmail subscription.
 
@@ -152,7 +155,7 @@ Incoming endpoint:
 - `POST /v1/webhooks/agents/:agentId/gmail/:subscription`
 - auth: GCP Pub/Sub OIDC JWT (`Authorization: Bearer <jwt>`) — verified against Google's public keys and forwarded upstream unchanged
 - `:agentId` selects `agents.<agentId>`
-- `:subscription` selects `agents.<agentId>.apps.gmail.<subscription>`
+- `:subscription` selects `agents.<agentId>.apps.gmail.subscriptions.<subscription>`
 
 Forwarded request:
 
@@ -169,12 +172,14 @@ agents:
     openclawHooksToken: Bearer <OPENCLAW_HOOKS_TOKEN_TASHI>
     apps:
       gmail:
-        jodok.batlogg@pina.earth:
-          oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
-          forwardPort: 8788
+        enabled: true
+        subscriptions:
+          jodok.batlogg@pina.earth:
+            oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
+            forwardPort: 8788
 ```
 
-Each agent can define zero or more Gmail subscriptions.
+Each agent can define zero or more Gmail subscriptions under `subscriptions`. `enabled` defaults to `true` when the Gmail app block exists.
 
 GCP Pub/Sub setup — one Pub/Sub subscription per Gmail subscription entry:
 

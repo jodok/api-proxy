@@ -231,38 +231,51 @@ function normalizeConfig(raw) {
     }
 
     const normalizedAgentApps = {};
-    const gmailSubscriptions = agentApps.gmail;
-    if (gmailSubscriptions !== undefined) {
-      if (!gmailSubscriptions || typeof gmailSubscriptions !== 'object' || Array.isArray(gmailSubscriptions)) {
+    const gmailConfig = agentApps.gmail;
+    if (gmailConfig !== undefined) {
+      if (!gmailConfig || typeof gmailConfig !== 'object' || Array.isArray(gmailConfig)) {
         throw new Error(`[api-proxy] Agent '${agentId}' app 'gmail' must be an object`);
       }
 
-      const normalizedGmailSubscriptions = {};
-      for (const [subscription, entry] of Object.entries(gmailSubscriptions)) {
-        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
-          throw new Error(`[api-proxy] Agent '${agentId}' gmail subscription '${subscription}' config must be an object`);
+      const gmailEnabled = gmailConfig.enabled ?? true;
+      if (typeof gmailEnabled !== 'boolean') {
+        throw new Error(`[api-proxy] Agent '${agentId}' app 'gmail' enabled must be a boolean`);
+      }
+      if (!gmailEnabled) {
+        normalizedAgentApps.gmail = { enabled: false, subscriptions: {} };
+      } else {
+        const gmailSubscriptions = gmailConfig.subscriptions;
+        if (!gmailSubscriptions || typeof gmailSubscriptions !== 'object' || Array.isArray(gmailSubscriptions)) {
+          throw new Error(`[api-proxy] Agent '${agentId}' app 'gmail' requires a 'subscriptions' map`);
         }
 
-        const oidcEmail = String(entry.oidcEmail ?? '').trim();
-        const forwardPortValue = entry.forwardPort ?? DEFAULT_GMAIL_FORWARD_PORT;
-        const forwardPort = Number(forwardPortValue);
-        if (!oidcEmail) throw new Error(`[api-proxy] Agent '${agentId}' gmail subscription '${subscription}' missing oidcEmail`);
-        if (!Number.isInteger(forwardPort) || forwardPort < 1 || forwardPort > 65535) {
-          throw new Error(`[api-proxy] Agent '${agentId}' gmail subscription '${subscription}' has invalid forwardPort`);
+        const normalizedGmailSubscriptions = {};
+        for (const [subscription, entry] of Object.entries(gmailSubscriptions)) {
+          if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+            throw new Error(`[api-proxy] Agent '${agentId}' gmail subscription '${subscription}' config must be an object`);
+          }
+
+          const oidcEmail = String(entry.oidcEmail ?? '').trim();
+          const forwardPortValue = entry.forwardPort ?? DEFAULT_GMAIL_FORWARD_PORT;
+          const forwardPort = Number(forwardPortValue);
+          if (!oidcEmail) throw new Error(`[api-proxy] Agent '${agentId}' gmail subscription '${subscription}' missing oidcEmail`);
+          if (!Number.isInteger(forwardPort) || forwardPort < 1 || forwardPort > 65535) {
+            throw new Error(`[api-proxy] Agent '${agentId}' gmail subscription '${subscription}' has invalid forwardPort`);
+          }
+
+          normalizedGmailSubscriptions[subscription] = {
+            oidcEmail,
+            forwardPort,
+            forwardUrl: buildGmailForwardUrl(url, forwardPort),
+          };
         }
 
-        normalizedGmailSubscriptions[subscription] = {
-          oidcEmail,
-          forwardPort,
-          forwardUrl: buildGmailForwardUrl(url, forwardPort),
-        };
-      }
+        if (Object.keys(normalizedGmailSubscriptions).length === 0) {
+          throw new Error(`[api-proxy] Agent '${agentId}' app 'gmail' requires at least one subscription entry`);
+        }
 
-      if (Object.keys(normalizedGmailSubscriptions).length === 0) {
-        throw new Error(`[api-proxy] Agent '${agentId}' app 'gmail' requires at least one subscription entry`);
+        normalizedAgentApps.gmail = { enabled: true, subscriptions: normalizedGmailSubscriptions };
       }
-
-      normalizedAgentApps.gmail = normalizedGmailSubscriptions;
     }
 
     normalizedAgents[agentId] = {
@@ -369,7 +382,7 @@ function normalizeConfig(raw) {
       }
 
       const enabled = Object.values(normalizedAgents).some((agentConfig) => {
-        return Boolean(agentConfig.apps?.gmail && Object.keys(agentConfig.apps.gmail).length > 0);
+        return Boolean(agentConfig.apps?.gmail?.enabled && Object.keys(agentConfig.apps.gmail.subscriptions).length > 0);
       });
 
       normalizedApps.gmail = { ...appDef, enabled };
@@ -754,7 +767,7 @@ async function handleGmailWebhook(c) {
   const agentId = String(c.req.param('agentId') ?? '').trim();
   const subscription = String(c.req.param('subscription') ?? '').trim();
   const agentConfig = config.agents[agentId];
-  const subscriptionEntry = agentConfig?.apps?.gmail?.[subscription];
+  const subscriptionEntry = agentConfig?.apps?.gmail?.subscriptions?.[subscription];
 
   if (!agentConfig) {
     log('warn', `[api-proxy] unknown_agent path=${path} agent=${agentId || 'none'}`);
