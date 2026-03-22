@@ -13,9 +13,6 @@ WEBFORM_ALLOWED_ORIGINS:
   # add any other origins that host webforms
 
 agents:
-  main:
-    url: https://<main-tailscale-host>
-    openclawHooksToken: Bearer <OPENCLAW_HOOKS_TOKEN_MAIN>
   tashi:
     url: https://tashi.silverside-mermaid.ts.net
     openclawHooksToken: Bearer <OPENCLAW_HOOKS_TOKEN_TASHI>
@@ -26,9 +23,6 @@ agents:
 apps:
   krisp:
     enabled: true
-    # Optional: OpenClaw target agent for all Krisp forwards (defaults to 'main').
-    # This target must exist under top-level agents.
-    targetAgent: main
     # Required: auth per agentId in route /v1/webhooks/agents/:agentId/notetaker/krisp
     agents:
       tashi:
@@ -36,7 +30,7 @@ apps:
       pema:
         incomingAuthorization: Bearer <KRISP_AUTHORIZATION_PEMA>
     # OpenClaw hook parameters (hardwired in code, documented here for reference):
-    # agentId: main              — routed via apps.krisp.targetAgent (default: main)
+    # agentId: omitted           — routing is selected by route :agentId plus sessionKey
     # sessionKey: hook:notetaker:krisp — routes into the Krisp notetaker hook session
     # wakeMode: now              — processed immediately
     # deliver: false             — queued silently; no immediate notification pushed

@@ -36,7 +36,6 @@ Current config shape:
 - `apps`:
   - currently `krisp`, optional `github`, optional `gmail`
   - defines:
-    - `krisp.targetAgent` (optional OpenClaw target agent shortname, default `main`)
     - `krisp.agents.<agentId>.incomingAuthorization` (required per-agent auth by URL `:agentId`)
     - `krisp.enabled` (optional boolean route toggle, default `true`)
     - `github.targetAgent` (agent shortname)
@@ -66,8 +65,8 @@ Incoming check:
 
 Forwarded request:
 
-- `POST <agents.<apps.krisp.targetAgent|main>.url>/hooks/agent`
-- `Authorization: <agents.<apps.krisp.targetAgent|main>.openclawHooksToken>`
+- `POST <agents.<agentId>.url>/hooks/agent`
+- `Authorization: <agents.<agentId>.openclawHooksToken>`
 - `Content-Type: application/json`
 
 Forwarded payload:
@@ -76,7 +75,6 @@ Forwarded payload:
 {
   "name": "notetaker:krisp",
   "message": "<raw body string>",
-  "agentId": "main",
   "sessionKey": "hook:notetaker:krisp",
   "deliver": false,
   "wakeMode": "now"
@@ -166,15 +164,6 @@ Config:
 
 ```yaml
 apps:
-  krisp:
-    enabled: true
-    targetAgent: main
-    agents:
-      tashi:
-        incomingAuthorization: Bearer <KRISP_AUTHORIZATION_TASHI>
-      pema:
-        incomingAuthorization: Bearer <KRISP_AUTHORIZATION_PEMA>
-
   gmail:
     enabled: true
     agents:
