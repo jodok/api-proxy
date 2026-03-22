@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
 import { serve } from '@hono/node-server';
-import { jwtVerify } from 'jose';
+import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import yaml from 'js-yaml';
@@ -15,6 +15,7 @@ const FORWARD_TIMEOUT_MS = 15000;
 const DEBUG_MESSAGE_PREVIEW_CHARS = 300;
 const GMAIL_FORWARD_PATH = '/gmail-pubsub';
 const DEFAULT_GMAIL_FORWARD_PORT = 8788;
+const GOOGLE_JWKS = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
 
 const APP_DEFINITIONS = {
   krisp: {
