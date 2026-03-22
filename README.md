@@ -154,16 +154,16 @@ Each route selects one agent and one Gmail subscription.
 Incoming endpoint:
 
 - `POST /v1/webhooks/agents/:agentId/gmail/:subscription`
-- auth: GCP Pub/Sub OIDC JWT (`Authorization: Bearer <jwt>`) — verified against Google's public keys at api-proxy ingress
+- auth: GCP Pub/Sub OIDC JWT (`Authorization: Bearer <jwt>`) — verified against Google's public keys at api-proxy ingress and matched against `oidcEmail`
 - `:agentId` selects `agents.<agentId>`
 - `:subscription` selects `agents.<agentId>.apps.gmail.subscriptions.<subscription>`
 
 Forwarded request:
 
 - `POST http://<hostname-from-agents.<agentId>.url>:<forwardPort>/gmail-pubsub`
-- `Authorization: <agents.<agentId>.apps.gmail.subscriptions.<subscription>.token>` is sent upstream to `gog gmail watch serve`
+- `x-gog-token: <agents.<agentId>.apps.gmail.subscriptions.<subscription>.token>` is sent upstream to `gog gmail watch serve`
 - the hostname comes from `agents.<agentId>.url`; the proxy derives the Gmail target URL and always uses `http`, the configured `forwardPort` or default `8788`, and `/gmail-pubsub`
-- this fixes the watcher-side audience mismatch by not forwarding the original Pub/Sub OIDC JWT upstream
+- this fixes the mistaken ingress token check and the watcher-side audience mismatch by keeping OIDC at api-proxy ingress and not forwarding the Pub/Sub JWT upstream
 
 Config:
 
@@ -209,8 +209,8 @@ gcloud pubsub subscriptions create gmail-watch-${AGENT} \
 ```
 
 Set `oidcEmail` per Gmail subscription to `pubsub-push@<PROJECT_ID>.iam.gserviceaccount.com`.
-Set `token` per Gmail subscription to the shared token expected by the local watcher.
-Set `forwardPort` only when the local `gog gmail watch serve` port is not `8788`. This change keeps OIDC verification at api-proxy ingress and fixes the watcher-side audience mismatch by not forwarding the Pub/Sub JWT upstream.
+Set `token` per Gmail subscription to the shared token expected by the local watcher via `x-gog-token`.
+Set `forwardPort` only when the local `gog gmail watch serve` port is not `8788`. This hotfix keeps OIDC verification at api-proxy ingress, fixes the mistaken ingress token check, and fixes the watcher-side audience mismatch by not forwarding the Pub/Sub JWT upstream.
 
 ## Local Run
 
