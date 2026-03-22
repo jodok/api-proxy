@@ -50,29 +50,20 @@ apps:
   #   /v1/webhooks/agents/tashi/webform/contact
 
   # gmail is optional — omit to disable the route
-  # Each agent can expose multiple Gmail accounts.
-  # Every account entry maps to its own daemon URL, for example on a different port.
-  # Account ids can also be full email addresses.
+  # subscriptions maps Gmail subscription emails. Each key's local part must
+  # match a configured agent shortname, for example tashi@namche.ai -> agents.tashi.
   # The oidcEmail is the GCP service account expected in the Pub/Sub OIDC JWT.
-  # All accounts can share one service account (same GCP project) or use separate ones.
+  # The proxy derives http://<agent host>:<forwardPort>/gmail-pubsub from the
+  # matching agents.<agentId>.url and forwards the same Authorization header.
+  # forwardPort is optional and defaults to 8788.
   gmail:
-    enabled: true  # set false to disable Gmail proxy route without removing this block
-    agents:
-      tashi:
-        accounts:
-          tashi@namche.ai:
-            oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
-            forwardUrl: https://tashi.silverside-mermaid.ts.net:8788/gmail-pubsub?token=<GOG_SERVE_TOKEN_TASHI>
-          jodok@batlogg.com:
-            oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
-            forwardUrl: https://tashi.silverside-mermaid.ts.net:8789/gmail-pubsub?token=<GOG_SERVE_TOKEN_BTLG>
-      pema:
-        accounts:
-          jodok@batlogg.com:
-            oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
-            forwardUrl: https://<pema-tailscale-host>:8788/gmail-pubsub?token=<GOG_SERVE_TOKEN_BTLG>
-      # nima:
-      #   accounts:
-      #     jodok.batlogg@pina.earth:
-      #       oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
-      #       forwardUrl: https://<nima-tailscale-host>:8790/gmail-pubsub?token=<GOG_SERVE_TOKEN_PINA>
+    subscriptions:
+      tashi@namche.ai:
+        oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
+        # forwardPort: 8788  # optional, default shown for clarity
+      pema@namche.ai:
+        oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
+        # forwardPort: 8788
+      # nima@namche.ai:
+      #   oidcEmail: pubsub-push@<PROJECT>.iam.gserviceaccount.com
+      #   forwardPort: 8788

@@ -23,3 +23,9 @@
 - Always squash-merge into `main`.
 - Repository-specific rules may add constraints, but must not weaken these global rules.
 - If a rule should apply across repositories, add it here first and then update the consuming repositories.
+
+## Gmail config
+
+- `apps.gmail.subscriptions.<subscriptionEmail>.oidcEmail`
+- `apps.gmail.subscriptions.<subscriptionEmail>.forwardPort` (optional, defaults to `8788`)
+- Omit `apps.gmail` entirely to disable the Gmail route.
