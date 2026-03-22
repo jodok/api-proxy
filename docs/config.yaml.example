@@ -22,11 +22,14 @@ agents:
         subscriptions:
           tashi@namche.ai:
             oidcEmail: pubsub-push@omega-linker-486421-e1.iam.gserviceaccount.com
+            token: <GMAIL_WATCHER_TOKEN_TASHI>
           jodok@batlogg.com:
             oidcEmail: pubsub-push@omega-linker-486421-e1.iam.gserviceaccount.com
+            token: <GMAIL_WATCHER_TOKEN_BTLG>
             forwardPort: 8789
           jodok.batlogg@pina.earth:
             oidcEmail: pubsub-push@jodok-485907.iam.gserviceaccount.com
+            token: <GMAIL_WATCHER_TOKEN_PINA>
             forwardPort: 8790
   pema:
     url: https://<pema-tailscale-host>
@@ -37,6 +40,7 @@ agents:
     #     subscriptions:
     #       jodok@batlogg.com:
     #         oidcEmail: pubsub-push@omega-linker-486421-e1.iam.gserviceaccount.com
+    #         token: <GMAIL_WATCHER_TOKEN_BTLG>
 
 apps:
   krisp:
